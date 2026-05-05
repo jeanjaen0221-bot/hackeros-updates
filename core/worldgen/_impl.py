@@ -14,7 +14,7 @@ import math
 import random
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 
 WORLD_MAGIC = b"WRLD"
@@ -594,8 +594,8 @@ def _inject_story_anchors(world: Dict[str, Any], seed: int) -> None:
         for h in (t.get("hosts") or []):
             if not isinstance(h, dict):
                 continue
-            nid = str(h.get("network_id", ""))
-            host_idx_by_net[nid] = host_idx_by_net.get(nid, 0) + 1
+            net_id = str(h.get("network_id", ""))
+            host_idx_by_net[net_id] = host_idx_by_net.get(net_id, 0) + 1
 
     districts = world.get("districts") or [{"district_id": "d00"}]
     region_id = str((world.get("regions") or [{}])[0].get("region_id", "eu"))
@@ -857,8 +857,8 @@ def _inject_story_anchors(world: Dict[str, Any], seed: int) -> None:
                         (d for d in districts if isinstance(d, dict) and str(d.get("district_id", "")) == did),
                         None,
                     )
-                    _cx = float((_dref or {}).get("center", {}).get("x", r.random()))
-                    _cy = float((_dref or {}).get("center", {}).get("y", r.random()))
+                    _cx = float((_dref or {}).get("center", {}).get("x", r.random()))  # type: ignore[union-attr]
+                    _cy = float((_dref or {}).get("center", {}).get("y", r.random()))  # type: ignore[union-attr]
                     _rad = float((_dref or {}).get("radius", 0.15))
                     _places.append({
                         "place_id": place_id,
@@ -1198,6 +1198,73 @@ def _host_label(r: random.Random, ttype: str, role: str, profile: str = "generic
     return f"{base}-{n}" if role in {"ws", "ap"} and not base.endswith(n) else base
 
 
+def _make_lore_extras(r: random.Random, ttype: str, profile: str, name: str, slug: str) -> Dict[str, Any]:
+    """Return profile-coherent lore fields to merge into t['lore']."""
+    _first = [
+        "Alex","Sam","Jordan","Maya","Noah","Lina","Omar","Eva","Kai","Nora",
+        "Ivan","Sofia","Yuki","Leon","Amara","Zara","Remi","Theo","Hana","Elias",
+        "Mia","Lucas","Asha","Erik","Priya","Marco","Leila","Finn","Camille","Dmitri",
+    ]
+    _last = [
+        "Martin","Dubois","Nguyen","Silva","Khan","Rossi","Ivanov","Moreau",
+        "Schmidt","Tanaka","Patel","Okafor","Svensson","Petrov","Johansson",
+        "Ferreira","Andersen","Nakamura","Castillo","Reyes","Fischer","Torres",
+    ]
+    def _nm() -> str:
+        return f"{_pick(r, _first)} {_pick(r, _last)}"
+    if ttype == "company":
+        return {
+            "founded": r.randint(1985, 2022),
+            "employees": _pick(r, ["10-50", "50-200", "200-1000", "1000-5000", "5000+"]),
+            "revenue_range": _pick(r, ["<1M USD", "1-10M USD", "10-100M USD", "100M-1B USD", ">1B USD"]),
+            "ceo": _nm(),
+            "ciso": _nm(),
+            "tech_stack": _pick(r, ["AWS/K8s", "Azure/.NET", "GCP/Go", "On-prem/VMware", "Hybrid/OpenStack"]),
+            "hq": _pick(r, ["Paris, FR", "Berlin, DE", "London, UK", "Amsterdam, NL", "Zurich, CH",
+                             "Dublin, IE", "Stockholm, SE", "Milan, IT", "Madrid, ES", "Warsaw, PL"]),
+        }
+    if ttype == "government":
+        return {
+            "director_general": _nm(),
+            "jurisdiction": _pick(r, ["national", "regional", "municipal", "inter-agency"]),
+            "org_code": f"{slug.upper()[:3]}-{r.randint(100, 999)}",
+            "annual_budget": _pick(r, ["<10M EUR", "10-100M EUR", "100M-500M EUR", "500M-2B EUR", ">2B EUR"]),
+            "public_site": f"https://www.{slug[:16]}.gov",
+        }
+    if ttype == "person":
+        return {
+            "age": r.randint(18, 68),
+            "email": (
+                f"{slug[:12]}@"
+                + _pick(r, ["gmail.com", "protonmail.com", "outlook.com", "yahoo.com", "icloud.com"])
+            ),
+            "city": _pick(r, ["Paris", "Berlin", "London", "Amsterdam", "Madrid", "Milan",
+                               "Warsaw", "Stockholm", "Vienna", "Zurich", "Lisbon", "Brussels"]),
+            "devices": _pick(r, [  # type: ignore[arg-type]
+                ["laptop", "smartphone"], ["laptop", "tablet", "smartphone"],
+                ["desktop", "smartphone"], ["laptop"], ["nas", "laptop", "smartphone"],
+            ]),
+        }
+    if ttype == "bank":
+        _cc = _pick(r, ["FR", "DE", "GB", "NL", "CH", "IE", "SE"])
+        return {
+            "swift_code": f"{slug.upper()[:4]}{_cc}XX",
+            "founded": r.randint(1880, 2018),
+            "assets_range": _pick(r, ["<100M USD", "100M-1B USD", "1B-50B USD", "50B-500B USD", ">500B USD"]),
+            "ceo": _nm(),
+            "regulator": _pick(r, ["ECB", "FCA", "FINMA", "OCC", "AMF", "BaFin", "CSSF"]),
+            "branches": r.randint(1, 250),
+        }
+    if ttype == "public_wifi":
+        return {
+            "operator": _pick(r, ["TelecomVendor", "CityWireless", "OpenNet", "ConnectHub", "FreeZone Networks"]),
+            "daily_visitors": r.randint(30, 2000),
+            "hours": _pick(r, ["07:00-23:00", "08:00-22:00", "24/7", "06:00-00:00", "09:00-21:00"]),
+            "monthly_data_tb": round(r.uniform(0.1, 15.0), 1),
+        }
+    return {}
+
+
 def _rich_files(r: random.Random, ttype: str, profile: str, name: str) -> Dict[str, str]:
     slug = _slug_name(name)
     ref = f"{slug.upper()[:4]}-{r.randint(1000, 9999)}"
@@ -1282,6 +1349,479 @@ def _rich_files(r: random.Random, ttype: str, profile: str, name: str) -> Dict[s
             "/srv/threat/ioc_feed.txt": f"feed={slug}-ioc\nstale_api_key=feed-{r.randint(1000,9999)}-rotate\n",
             "/srv/cases/customer_incidents.csv": "case_id,customer,severity\nIR-2041,redacted,high\nIR-2042,redacted,medium\n",
         })
+    elif profile == "software":
+        files.update({
+            "/srv/ci/pipeline.yml": (
+                f"name: {slug}-ci\non: [push]\njobs:\n  build:\n    runs-on: ubuntu-latest\n"
+                f"    steps:\n      - uses: actions/checkout@v3\n      - run: make test\n"
+            ),
+            "/home/dev/deployment_checklist.md": (
+                f"# {name} Deploy Checklist\n\nRef: {ref}\n"
+                f"- [ ] Run test suite (>95% coverage)\n- [ ] Bump semver in version.txt\n"
+                f"- [ ] Push to registry: registry.{slug}.internal\n- [ ] Notify {owner}@{slug}.internal\n"
+            ),
+        })
+    elif profile == "fintech":
+        files.update({
+            "/srv/compliance/aml_report.csv": (
+                f"tx_id,amount,flag,reviewed_by\n"
+                f"TX-{r.randint(10000,99999)},{r.randint(5000,500000)},suspicious,{owner}\n"
+                f"TX-{r.randint(10000,99999)},{r.randint(100,4999)},ok,auto\n"
+            ),
+            "/srv/api/openapi.yaml": (
+                f"openapi: 3.0.0\ninfo:\n  title: {name} API\n  version: v{r.randint(1,4)}.{r.randint(0,9)}\n"
+                f"servers:\n  - url: https://api.{slug}.internal\n"
+            ),
+            "/home/dev/kyc_backlog.txt": (
+                f"KYC Backlog — Ref: {ref}\nPending reviews: {r.randint(5,120)}\n"
+                f"Oldest pending: {r.randint(3,60)} days\nAssigned to: {owner}@{slug}.internal\n"
+            ),
+        })
+    elif profile in ("biotech", "pharma"):
+        files.update({
+            "/srv/lab/trial_data.csv": (
+                "trial_id,compound,phase,status\n"
+                f"T-{r.randint(1000,9999)},{slug.upper()[:6]}-{r.randint(10,99)},"
+                f"phase{r.randint(1,3)},{'ongoing' if r.random()<0.6 else 'paused'}\n"
+            ),
+            "/home/dev/compound_notes.txt": (
+                f"Compound Notes — Ref: {ref}\nLead molecule: {slug.upper()[:4]}-{r.randint(100,999)}\n"
+                f"Target: {_pick(r, ['oncology','cardiology','neurology','immunology','infectious disease'])}\n"
+                f"Regulatory filing: {'EMA' if r.random()<0.6 else 'FDA'} — milestone {r.randint(2025,2027)}-Q{r.randint(1,4)}\n"
+            ),
+            "/srv/qc/batch_release.csv": (
+                "batch_id,product,status,released_by\n"
+                f"B-{r.randint(1000,9999)},{slug[:6].upper()}-API,released,{owner}\n"
+                f"B-{r.randint(1000,9999)},{slug[:6].upper()}-FIN,quarantine,quality\n"
+            ),
+        })
+    elif profile in ("energy", "oil_gas"):
+        files.update({
+            "/srv/scada/plc_config.conf": (
+                f"[SCADA]\nsite={slug}\nmaster_ip={ip}\n"
+                f"protocol={'modbus_tcp' if r.random()<0.5 else 'dnp3'}\n"
+                f"poll_interval=5\nalarm_threshold=95\n"
+            ),
+            "/home/dev/grid_status.csv": (
+                "unit,output_mw,status\n"
+                f"G-{r.randint(1,12)},{r.randint(100,800)},{'online' if r.random()<0.85 else 'maintenance'}\n"
+                f"G-{r.randint(1,12)},{r.randint(100,800)},{'online' if r.random()<0.85 else 'standby'}\n"
+            ),
+            "/home/dev/maintenance_schedule.txt": (
+                f"Planned outage: {ref}\nUnit: G-{r.randint(1,12)}\n"
+                f"Window: {r.randint(2025,2026)}-{r.randint(1,12):02d}-{r.randint(1,28):02d} 00:00-06:00 UTC\n"
+                f"Approved by: {owner}@{slug}.internal\n"
+            ),
+        })
+    elif profile == "logistics":
+        files.update({
+            "/srv/wms/shipment_log.csv": (
+                "shipment_id,origin,dest,status\n"
+                f"SHP-{r.randint(10000,99999)},"
+                f"{_pick(r,['CDG','FRA','LHR','AMS'])},{_pick(r,['JFK','ORD','LAX','MIA'])},"
+                f"{'in_transit' if r.random()<0.7 else 'delivered'}\n"
+            ),
+            "/home/dev/fleet_tracking.txt": (
+                f"Fleet update — Ref: {ref}\nActive units: {r.randint(10,500)}\n"
+                f"Delayed routes: {r.randint(0,20)}\nLast GPS sync: {r.randint(0,23):02d}:{r.randint(0,59):02d} UTC\n"
+            ),
+        })
+    elif profile == "defense":
+        files.update({
+            "/srv/contracts/classified_index.txt": (
+                f"CONTRACT INDEX — {ref}\nClassification: RESTRICTED\n"
+                f"Active contracts: {r.randint(3,40)}\n"
+                f"Procurement officer: {owner}@{slug}.internal\n"
+            ),
+            "/home/dev/procurement_brief.txt": (
+                f"Procurement Brief — Ref: {ref}\n"
+                f"Line item: {_pick(r,['secure comms upgrade','radar maintenance','logistics software','network hardening'])}\n"
+                f"Budget: EUR {r.randint(1,50)*1_000_000:,}\n"
+                f"Approval: {'approved' if r.random()<0.5 else 'pending clearance'}\n"
+            ),
+        })
+    elif profile in ("media", "streaming"):
+        files.update({
+            "/srv/cms/content_schedule.csv": (
+                "content_id,title,publish_at,status\n"
+                f"C-{r.randint(1000,9999)},{slug[:8].title()} Weekly,"
+                f"2026-{r.randint(1,12):02d}-{r.randint(1,28):02d},scheduled\n"
+                f"C-{r.randint(1000,9999)},Highlights Reel,"
+                f"2026-{r.randint(1,12):02d}-{r.randint(1,28):02d},draft\n"
+            ),
+            "/home/dev/ad_revenue.txt": (
+                f"Ad Revenue Report — Ref: {ref}\n"
+                f"Q{r.randint(1,4)} CPM avg: EUR {round(r.uniform(0.5, 8.0), 2)}\n"
+                f"Impressions served: {r.randint(1,500)*1_000_000:,}\nFill rate: {r.randint(72,99)}%\n"
+            ),
+        })
+    elif profile == "adtech":
+        files.update({
+            "/srv/bidder/rtb_config.json": (
+                f'{{"endpoint":"https://rtb.{slug}.internal/bid",'
+                f'"timeout_ms":{r.randint(50,150)},'
+                f'"floor_price_cpm":{round(r.uniform(0.1, 2.0), 2)}}}\n'
+            ),
+            "/home/dev/campaign_report.csv": (
+                "campaign_id,impressions,clicks,spend_eur\n"
+                f"CAM-{r.randint(1000,9999)},{r.randint(100000,5000000)},"
+                f"{r.randint(500,50000)},{r.randint(200,20000)}\n"
+            ),
+        })
+    elif profile == "manufacturing":
+        files.update({
+            "/srv/mes/production_log.csv": (
+                "line,units_today,defect_rate_pct,shift\n"
+                f"L-{r.randint(1,8)},{r.randint(200,5000)},{round(r.uniform(0.1,3.5),2)},morning\n"
+                f"L-{r.randint(1,8)},{r.randint(200,5000)},{round(r.uniform(0.1,3.5),2)},evening\n"
+            ),
+            "/home/dev/quality_memo.txt": (
+                f"QC Memo — Ref: {ref}\nNCR count this week: {r.randint(0,15)}\n"
+                f"ISO 9001 audit: {r.randint(2025,2027)}-Q{r.randint(1,4)}\n"
+                f"Corrective actions pending: {r.randint(0,8)}\n"
+            ),
+        })
+    elif profile == "ngo":
+        files.update({
+            "/srv/donors/contribution_log.csv": (
+                "donor_id,amount_eur,date,program\n"
+                f"D-{r.randint(1000,9999)},{r.randint(500,50000)},"
+                f"2026-{r.randint(1,12):02d}-{r.randint(1,28):02d},field_ops\n"
+                f"D-{r.randint(1000,9999)},{r.randint(100,5000)},"
+                f"2026-{r.randint(1,12):02d}-{r.randint(1,28):02d},admin\n"
+            ),
+            "/home/dev/field_report.txt": (
+                f"Field Report — Ref: {ref}\n"
+                f"Region: {_pick(r,['West Africa','SEA','MENA','Eastern Europe','LAC'])}\n"
+                f"Beneficiaries reached: {r.randint(500,50000)}\n"
+                f"Incident: {'none' if r.random()<0.7 else 'security advisory issued'}\n"
+            ),
+        })
+    elif profile == "construction":
+        files.update({
+            "/srv/projects/site_log.csv": (
+                "project_id,site,progress_pct,safety_incidents\n"
+                f"PRJ-{r.randint(100,999)},{slug[:8].upper()} Tower,{r.randint(10,95)},{r.randint(0,5)}\n"
+            ),
+            "/home/dev/procurement_orders.csv": (
+                "po_id,supplier,material,value_eur\n"
+                f"PO-{r.randint(1000,9999)},SupplierCo,"
+                f"{_pick(r,['steel','concrete','copper wiring','HVAC units'])},{r.randint(10000,500000)}\n"
+            ),
+        })
+    elif profile == "robotics":
+        files.update({
+            "/srv/fleet/robot_status.csv": (
+                "robot_id,model,status,battery_pct\n"
+                f"R-{r.randint(100,999)},{slug[:6].upper()}-MK{r.randint(1,5)},"
+                f"{'operational' if r.random()<0.8 else 'maintenance'},{r.randint(20,100)}\n"
+            ),
+            "/home/dev/firmware_notes.txt": (
+                f"Firmware Notes — Ref: {ref}\n"
+                f"Version: fw-{r.randint(2,8)}.{r.randint(0,15)}.{r.randint(0,9)}\n"
+                f"Pending rollout: {r.randint(12,80)} units — rollback window {r.randint(24,72)}h\n"
+            ),
+        })
+    elif profile == "satellite":
+        files.update({
+            "/srv/ground/telemetry_snapshot.txt": (
+                f"SAT-ID: {slug.upper()[:4]}-{r.randint(100,999)}\n"
+                f"Orbit: {'LEO' if r.random()<0.6 else 'GEO'} — {r.randint(400,35800)} km\n"
+                f"Signal: {'nominal' if r.random()<0.85 else 'degraded'}\n"
+                f"Next contact window: {r.randint(0,23):02d}:{r.randint(0,59):02d} UTC\n"
+            ),
+            "/home/dev/mission_plan.txt": (
+                f"Mission Plan — Ref: {ref}\n"
+                f"Payload: {_pick(r,['earth observation','comms relay','weather monitoring','navigation'])}\n"
+                f"Operator: {owner}@{slug}.internal — Launch: {r.randint(2024,2028)}-Q{r.randint(1,4)}\n"
+            ),
+        })
+    elif profile == "agritech":
+        files.update({
+            "/srv/sensors/field_data.csv": (
+                "field_id,temp_c,soil_humidity_pct,ndvi\n"
+                f"F-{r.randint(1,50)},{round(r.uniform(8.0,35.0),1)},{r.randint(20,80)},{round(r.uniform(0.3,0.9),2)}\n"
+            ),
+            "/home/dev/harvest_forecast.txt": (
+                f"Harvest Forecast — Ref: {ref}\n"
+                f"Crop: {_pick(r,['wheat','corn','soybean','rapeseed','sunflower'])}\n"
+                f"Projected yield: {r.randint(2,12)} t/ha — risk: {_pick(r,['drought','frost','flood','pest'])}\n"
+            ),
+        })
+    elif profile == "mining":
+        files.update({
+            "/srv/ops/extraction_log.csv": (
+                "shaft,ore_grade_pct,tons_extracted,status\n"
+                f"S-{r.randint(1,20)},{round(r.uniform(0.5,8.0),2)},{r.randint(100,5000)},"
+                f"{'active' if r.random()<0.8 else 'suspended'}\n"
+            ),
+            "/home/dev/safety_report.txt": (
+                f"Safety Report — Ref: {ref}\nLTI incidents this month: {r.randint(0,4)}\n"
+                f"Gas readings: {'normal' if r.random()<0.85 else 'elevated — ventilation check required'}\n"
+                f"Next inspection: 2026-{r.randint(1,12):02d}-{r.randint(1,28):02d}\n"
+            ),
+        })
+    elif profile == "smart_city":
+        files.update({
+            "/srv/iot/sensor_map.csv": (
+                "sensor_id,type,location,status\n"
+                f"SNS-{r.randint(1000,9999)},traffic,{slug[:6]}-junction-{r.randint(1,50)},"
+                f"{'online' if r.random()<0.9 else 'offline'}\n"
+                f"SNS-{r.randint(1000,9999)},air_quality,{slug[:6]}-park-{r.randint(1,20)},"
+                f"{'online' if r.random()<0.9 else 'offline'}\n"
+            ),
+            "/home/dev/city_ops_brief.txt": (
+                f"City Ops Brief — Ref: {ref}\nActive incidents: {r.randint(0,10)}\n"
+                f"Traffic congestion index: {round(r.uniform(0.2, 1.0), 2)}\n"
+                f"Scheduled maintenance: {r.randint(3,15)} assets\n"
+            ),
+        })
+    elif profile == "healthtech":
+        files.update({
+            "/srv/platform/patient_api.yml": (
+                f"service: patient-api\nversion: v{r.randint(1,4)}.{r.randint(0,9)}\n"
+                f"base_url: https://api.{slug}.internal\nauth: oauth2\ndata_residency: EU\n"
+            ),
+            "/home/dev/interop_notes.txt": (
+                f"Interop Notes — Ref: {ref}\n"
+                f"HL7 FHIR R{r.randint(3,5)} compliance: {'partial' if r.random()<0.4 else 'full'}\n"
+                f"Partner EHR: {_pick(r,['Epic','Cerner','OpenMRS','Medidata'])}\n"
+                f"Pending cert: {_pick(r,['ISO 27001','SOC 2 Type II','HDS','HIPAA BAA'])}\n"
+            ),
+        })
+    elif profile == "civil_registry":
+        files.update({
+            "/srv/registry/birth_index.csv": (
+                "record_id,year,district,status\n"
+                f"R-{r.randint(10000,99999)},{r.randint(1990,2026)},central,"
+                f"{'indexed' if r.random()<0.9 else 'pending'}\n"
+                f"R-{r.randint(10000,99999)},{r.randint(1990,2026)},west,indexed\n"
+            ),
+            "/home/dev/digitisation_memo.txt": (
+                f"Digitisation Memo — Ref: {ref}\n"
+                f"Records migrated: {r.randint(10000,500000):,} / {r.randint(500000,2000000):,}\n"
+                f"Format: {_pick(r,['XML-SDTF','GEDCOM','BP-RNIPP','CSV-ISO8601'])}\n"
+                f"Deadline: 2026-Q{r.randint(2,4)}\n"
+            ),
+        })
+    elif profile == "tax":
+        files.update({
+            "/srv/tax/pending_audits.csv": (
+                "case_id,taxpayer_id,year,amount_eur,status\n"
+                f"AUD-{r.randint(10000,99999)},TP-{r.randint(100000,999999)},"
+                f"{r.randint(2021,2025)},{r.randint(5000,500000)},"
+                f"{'open' if r.random()<0.5 else 'closed'}\n"
+            ),
+            "/home/dev/compliance_notice.txt": (
+                f"Compliance Notice — Ref: {ref}\n"
+                f"Directive: {_pick(r,['DAC7','FATCA','CRS','BEPS Pillar II'])}\n"
+                f"Deadline: 2026-{r.randint(1,12):02d}-{r.randint(1,28):02d}\n"
+                f"Contact: {owner}@{slug}.gov\n"
+            ),
+        })
+    elif profile == "police":
+        files.update({
+            "/srv/dispatch/incident_log.csv": (
+                "incident_id,type,district,status\n"
+                f"INC-{r.randint(10000,99999)},"
+                f"{_pick(r,['disturbance','theft','traffic','suspicious activity'])},"
+                f"d{r.randint(1,12):02d},{'closed' if r.random()<0.6 else 'open'}\n"
+            ),
+            "/home/dev/case_brief.txt": (
+                f"Case Brief — Ref: {ref}\n"
+                f"Operation: {_pick(r,['IRONGATE','SILENTWATCH','BLUEWALL','NIGHTFALL'])}\n"
+                f"Status: {'ongoing' if r.random()<0.5 else 'closed'}\n"
+                f"Lead: {owner}@{slug}.gov.int\n"
+            ),
+        })
+    elif profile == "courts":
+        files.update({
+            "/srv/cases/docket.csv": (
+                "case_id,type,filed,status\n"
+                f"CASE-{r.randint(1000,9999)}/{r.randint(2022,2026)},"
+                f"{_pick(r,['criminal','civil','appeal','administrative'])},"
+                f"2026-{r.randint(1,12):02d}-{r.randint(1,28):02d},"
+                f"{'pending' if r.random()<0.5 else 'adjourned'}\n"
+            ),
+            "/home/dev/sentencing_notes.txt": (
+                f"Sentencing Notes — Ref: {ref}\nJudge: {owner}@{slug}.courts.int\n"
+                f"Open deliberations: {r.randint(2,30)}\n"
+                f"Next session: 2026-{r.randint(1,12):02d}-{r.randint(1,28):02d}\n"
+            ),
+        })
+    elif profile == "immigration":
+        files.update({
+            "/srv/visa/applications_queue.csv": (
+                "app_id,nationality,type,status\n"
+                f"VA-{r.randint(100000,999999)},"
+                f"{_pick(r,['MAR','TUN','UKR','IND','CHN','BRA'])},student,"
+                f"{'processing' if r.random()<0.6 else 'approved'}\n"
+                f"VA-{r.randint(100000,999999)},"
+                f"{_pick(r,['NGA','EGY','PHL','VNM','MEX'])},work,processing\n"
+            ),
+            "/home/dev/processing_memo.txt": (
+                f"Processing Memo — Ref: {ref}\nBacklog: {r.randint(100,5000)} applications\n"
+                f"Avg processing time: {r.randint(5,45)} days\nFlag queue: {r.randint(0,80)} cases\n"
+            ),
+        })
+    elif profile == "customs":
+        files.update({
+            "/srv/manifest/shipment_declarations.csv": (
+                "decl_id,origin,hs_code,status\n"
+                f"DEC-{r.randint(100000,999999)},{_pick(r,['CN','US','TR','IN','MA'])},"
+                f"{r.randint(1000,9999)},{'cleared' if r.random()<0.7 else 'hold'}\n"
+            ),
+            "/home/dev/seizure_log.txt": (
+                f"Seizure Log — Ref: {ref}\nItems detained this week: {r.randint(1,40)}\n"
+                f"Category: {_pick(r,['counterfeit goods','undeclared currency','prohibited substances','endangered species'])}\n"
+            ),
+        })
+    elif profile == "elections":
+        files.update({
+            "/srv/rolls/voter_extract.csv": (
+                "district_id,registered,active,last_updated\n"
+                f"D-{r.randint(1,50)},{r.randint(5000,200000)},{r.randint(3000,180000)},"
+                f"2026-{r.randint(1,12):02d}-{r.randint(1,28):02d}\n"
+            ),
+            "/home/dev/audit_checklist.txt": (
+                f"Election Audit — Ref: {ref}\nObservers accredited: {r.randint(20,500)}\n"
+                f"System audit: {'passed' if r.random()<0.8 else 'pending remediation'}\n"
+                f"Chain of custody: {'intact' if r.random()<0.9 else 'review required'}\n"
+            ),
+        })
+    elif profile in ("utilities", "water", "environment"):
+        files.update({
+            "/srv/ops/asset_register.csv": (
+                "asset_id,type,zone,status\n"
+                f"AST-{r.randint(1000,9999)},"
+                f"{_pick(r,['pump station','water tower','treatment plant','substation'])},"
+                f"zone-{r.randint(1,12)},{'operational' if r.random()<0.9 else 'maintenance'}\n"
+            ),
+            "/home/dev/incident_report.txt": (
+                f"Incident Report — Ref: {ref}\n"
+                f"Event: {_pick(r,['pressure anomaly','chlorine level alert','power fluctuation','sensor fault'])}\n"
+                f"Resolution: {'resolved' if r.random()<0.75 else 'ongoing'}\n"
+                f"Notified: {owner}@{slug}.gov.int\n"
+            ),
+        })
+    elif profile == "education":
+        files.update({
+            "/srv/erp/enrollment_stats.csv": (
+                "institution_id,enrolled,staff,year\n"
+                f"SCH-{r.randint(100,999)},{r.randint(200,5000)},{r.randint(20,400)},2026\n"
+            ),
+            "/home/dev/inspection_memo.txt": (
+                f"Inspection Memo — Ref: {ref}\nInstitutions audited: {r.randint(5,80)}\n"
+                f"Non-compliant: {r.randint(0,15)}\n"
+                f"Key issue: {_pick(r,['digital infrastructure','staff shortage','curriculum gaps','safety'])}\n"
+            ),
+        })
+    elif profile == "emergency_services":
+        files.update({
+            "/srv/dispatch/call_log.csv": (
+                "call_id,type,units_dispatched,status\n"
+                f"CALL-{r.randint(10000,99999)},"
+                f"{_pick(r,['fire','medical','rescue','hazmat'])},{r.randint(1,8)},"
+                f"{'resolved' if r.random()<0.7 else 'active'}\n"
+            ),
+            "/home/dev/resource_allocation.txt": (
+                f"Resource Allocation — Ref: {ref}\n"
+                f"Active units: {r.randint(10,80)}\nOn standby: {r.randint(5,40)}\n"
+                f"Mutual aid: {'active' if r.random()<0.3 else 'none'}\n"
+            ),
+        })
+    elif profile == "housing":
+        files.update({
+            "/srv/registry/property_index.csv": (
+                "parcel_id,type,district,status\n"
+                f"PAR-{r.randint(100000,999999)},"
+                f"{_pick(r,['residential','commercial','mixed'])},d{r.randint(1,12):02d},"
+                f"{'registered' if r.random()<0.9 else 'disputed'}\n"
+            ),
+            "/home/dev/permit_backlog.txt": (
+                f"Permit Backlog — Ref: {ref}\nPending applications: {r.randint(50,1500)}\n"
+                f"Avg approval time: {r.randint(10,90)} days\nHigh-priority: {r.randint(0,30)}\n"
+            ),
+        })
+    elif profile == "crypto_custody":
+        files.update({
+            "/srv/custody/wallet_registry.csv": (
+                "wallet_id,currency,type,balance_btc_eq\n"
+                f"W-{r.randint(10000,99999)},BTC,cold,{round(r.uniform(0.5,250.0),4)}\n"
+                f"W-{r.randint(10000,99999)},ETH,hot,{round(r.uniform(1.0,500.0),4)}\n"
+            ),
+            "/home/dev/cold_storage_memo.txt": (
+                f"Cold Storage Memo — Ref: {ref}\n"
+                f"HSM model: {_pick(r,['Thales Luna','Utimaco CryptoServer','AWS CloudHSM'])}\n"
+                f"Key ceremony: scheduled {r.randint(2025,2027)}-Q{r.randint(1,4)}\n"
+                f"Multi-sig quorum: {r.randint(2,5)}-of-{r.randint(5,9)}\n"
+            ),
+        })
+    elif profile == "neobank":
+        files.update({
+            "/srv/api/rate_limits.json": (
+                f'{{"env":"production","limits":{{"transactions_per_sec":{r.randint(100,2000)},'
+                f'"onboarding_per_min":{r.randint(10,200)}}}}}\n'
+            ),
+            "/home/dev/onboarding_stats.csv": (
+                "date,signups,kyc_passed,kyc_failed\n"
+                f"2026-{r.randint(1,12):02d}-{r.randint(1,28):02d},"
+                f"{r.randint(200,5000)},{r.randint(150,4500)},{r.randint(5,200)}\n"
+            ),
+        })
+    elif profile == "brokerage":
+        files.update({
+            "/srv/trading/positions_snapshot.csv": (
+                "account_id,instrument,position,unrealised_pnl_eur\n"
+                f"ACC-{r.randint(10000,99999)},"
+                f"{_pick(r,['AAPL','MSFT','NVDA','BTC-USD','SPY'])},"
+                f"{r.randint(1,500)},{round(r.uniform(-10000,50000),2)}\n"
+            ),
+            "/home/dev/risk_memo.txt": (
+                f"Risk Memo — Ref: {ref}\nVaR (99%, 1d): EUR {r.randint(10000,500000):,}\n"
+                f"Margin calls today: {r.randint(0,15)}\nRisk officer: {owner}@{slug}.internal\n"
+            ),
+        })
+    elif profile in ("clearing", "payments", "remittance"):
+        files.update({
+            "/srv/settlement/batch_log.csv": (
+                "batch_id,txn_count,value_eur,status\n"
+                f"BATCH-{r.randint(10000,99999)},{r.randint(100,50000)},{r.randint(100000,50000000):,},"
+                f"{'settled' if r.random()<0.85 else 'pending'}\n"
+            ),
+            "/home/dev/reconciliation_note.txt": (
+                f"Reconciliation Note — Ref: {ref}\nFailed txns today: {r.randint(0,30)}\n"
+                f"Nostro imbalance: EUR {r.randint(0,100000)}\nEscalated to: {owner}@{slug}.internal\n"
+            ),
+        })
+    elif profile in ("wealth", "private_bank"):
+        files.update({
+            "/srv/clients/portfolio_summary.csv": (
+                "client_id,aum_eur,risk_profile,advisor\n"
+                f"CLI-{r.randint(1000,9999)},{r.randint(500000,50000000):,},"
+                f"{'conservative' if r.random()<0.5 else 'balanced'},{owner}\n"
+            ),
+            "/home/dev/client_meeting_notes.txt": (
+                f"Meeting Notes — Ref: {ref}\nClient: [REDACTED per banking secrecy]\n"
+                f"AUM discussed: EUR {r.randint(1,50)*1_000_000:,}\n"
+                f"Allocation change: +{r.randint(5,30)}% alternatives\nAdvisor: {owner}@{slug}.internal\n"
+            ),
+        })
+    elif profile == "atm_network":
+        files.update({
+            "/srv/atm/fleet_status.csv": (
+                "atm_id,location,cash_pct,status\n"
+                f"ATM-{r.randint(1000,9999)},{slug[:6].upper()}-central,"
+                f"{r.randint(10,100)},{'online' if r.random()<0.9 else 'offline'}\n"
+                f"ATM-{r.randint(1000,9999)},{slug[:6].upper()}-airport,"
+                f"{r.randint(10,100)},{'online' if r.random()<0.9 else 'cash_low'}\n"
+            ),
+            "/home/dev/replenishment_schedule.txt": (
+                f"Replenishment Schedule — Ref: {ref}\nUnits below threshold: {r.randint(0,20)}\n"
+                f"Next cash run: 2026-{r.randint(1,12):02d}-{r.randint(1,28):02d} {r.randint(6,10):02d}:00 UTC\n"
+                f"Carrier: {_pick(r,['Brinks','G4S','Loomis','Garda'])}\n"
+            ),
+        })
     return files
 
 
@@ -1338,7 +1878,7 @@ def _build_world_relations(r: random.Random, targets: List[dict]) -> List[dict]:
         if not aid or not bid or (aid, bid) in seen:
             continue
         seen.add((aid, bid))
-        rtype, label = _pick(r, relation_types)
+        rtype, label = _pick(r, relation_types)  # type: ignore[arg-type]
         rel = {
             "relation_id": f"rel_{len(relations):04d}",
             "type": rtype,
@@ -1561,17 +2101,17 @@ def generate_world_auto(
         for si in range(r.randint(2, 6)):
             places.append({"place_id": f"{did}:shop:{si}", "district_id": did, "category": "shop", "name": _pick(r, ["TechMart", "CornerShop", "QuickBuy", "ElectroHub", "PharmaPlus", "MarketOne", "ByteCafe", "MedPoint", "ParcelHub", "DataBooks", "MetroDeli", "VoltKiosk"]), **pxy()})
         for vi in range(r.randint(1, 3)):
-            category, names = _pick(r, [
+            category, names = _pick(r, [  # type: ignore[arg-type]
                 ("coworking", ["HiveWorks", "DeskForge", "NodeHouse", "BrightDesk"]),
                 ("clinic", ["CarePoint Clinic", "North Ward Clinic", "PulseCare"]),
                 ("transit", ["Metro Gate", "Central Tram Stop", "Parcel Depot"]),
                 ("venue", ["Forum Hall", "Arcade Loft", "Rooftop Lounge"]),
             ])
-            places.append({"place_id": f"{did}:{category}:{vi}", "district_id": did, "category": category, "name": _pick(r, names), **pxy()})
+            places.append({"place_id": f"{did}:{category}:{vi}", "district_id": did, "category": category, "name": _pick(r, names), **pxy()})  # type: ignore[arg-type]
 
-    weights = {}
-    for t in types:
-        weights[t] = 1.0
+    weights: Dict[str, float] = {}
+    for tname in types:
+        weights[tname] = 1.0
 
     wmode = str(wifi_density or "medium").lower()
     wifi_private_p = 0.75
@@ -1594,8 +2134,8 @@ def generate_world_auto(
         weights["bank"] = 0.5  # banks are rare but impactful
 
     bag: List[str] = []
-    for t, w in weights.items():
-        bag += [t] * int(max(1, round(w * 10)))
+    for _tk, _tw in weights.items():
+        bag += [_tk] * int(max(1, round(_tw * 10)))
 
     targets: List[dict] = []
     host_idx_by_network: Dict[str, int] = {}
@@ -1642,6 +2182,10 @@ def generate_world_auto(
 
         networks: List[dict] = []
         hosts: List[dict] = []
+        ssid_name: str = "HOME"
+        venue_kind: str = "cafe"
+        venue: Dict[str, Any] = {}
+        wifi_profile: Dict[str, Any] = {}
 
         def nid(suffix: str) -> str:
             return f"{tid}:{suffix}"
@@ -1679,7 +2223,7 @@ def generate_world_auto(
                       "/home/dev/report.txt": _generate_doc("company", "report.txt", r)})
             # DB server (50%)
             if r.random() < 0.50:
-                db_engine, db_port, db_ver = _pick(r, [("mysql",3306,"MySQL_5.7"),("postgres",5432,"PostgreSQL_14"),("mariadb",3306,"MariaDB_10.6")])
+                db_engine, db_port, db_ver = _pick(r, [("mysql",3306,"MySQL_5.7"),("postgres",5432,"PostgreSQL_14"),("mariadb",3306,"MariaDB_10.6")])  # type: ignore[arg-type]
                 add_host(lan_id, _host_label(r, "company", "db", profile), "Ubuntu", f"10.0.{i%200}.21",
                          [{"port": db_port, "name": db_engine, "version": db_ver, "vuln_tags": ["weak_creds"] if r.random() < _vp else []}],
                          {**_rich_files(r, "company", profile, name),
@@ -1833,7 +2377,7 @@ def generate_world_auto(
                       "/home/dev/treasury_report.txt": _generate_doc("bank", "treasury_report.txt", r),
                       "/home/dev/kyc_flags.txt": _generate_doc("bank", "kyc_flags.txt", r)})
             # Database server (always)
-            db_engine, db_port, db_ver = _pick(r, [("mysql", 3306, "MySQL_8.0"), ("postgres", 5432, "PostgreSQL_15")])
+            db_engine, db_port, db_ver = _pick(r, [("mysql", 3306, "MySQL_8.0"), ("postgres", 5432, "PostgreSQL_15")])  # type: ignore[arg-type]
             add_host(lan_id, _host_label(r, "bank", "db", profile), "Ubuntu",
                      f"10.20.{i%200}.20",
                      [{"port": db_port, "name": db_engine, "version": db_ver,
@@ -1915,6 +2459,7 @@ def generate_world_auto(
                 "sector": profile,
                 "risk": _pick(r, ["legacy systems", "rapid growth", "understaffed IT", "outsourced operations", "recent migration"]),
                 "contact_domain": f"{slug}.internal",
+                **_make_lore_extras(r, ttype, profile, name, slug),
             },
             "networks": networks,
             "hosts": hosts,
@@ -2229,7 +2774,7 @@ def generate_missions_auto(seed: int, world: Dict[str, Any], mission_count: int 
         ],
     }
 
-    def _hint(kind: str, hostname: str, nid: str, entry: Dict[str, Any] = None) -> str:
+    def _hint(kind: str, hostname: str, nid: str, entry: Optional[Dict[str, Any]] = None) -> str:
         if kind == "obtain_creds" and entry is not None:
             _ps = str(entry.get("primary_login_svc", ""))
             if _ps == "ssh":

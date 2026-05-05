@@ -41,7 +41,7 @@ def test_os_kernel_compiles():
 
 def test_server_routes():
     try:
-        import fastapi  # noqa: F401
+        import fastapi  # noqa: F401  # type: ignore[import-not-found]
     except ImportError:
         print("  [SKIP] test_server_routes -- fastapi non installe (OK en local)")
         return
@@ -53,7 +53,9 @@ def test_server_routes():
 
     import importlib.util
     spec = importlib.util.spec_from_file_location("server", DEV_HUB_SERVER / "server.py")
+    assert spec is not None
     mod = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
     try:
         spec.loader.exec_module(mod)
     except Exception as e:
@@ -100,7 +102,9 @@ def test_world_sync_exports():
     spec = importlib.util.spec_from_file_location(
         "world_sync", HACKER_OS / "core" / "world_sync.py"
     )
+    assert spec is not None
     mod = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
     spec.loader.exec_module(mod)
     assert hasattr(mod, "sync_if_needed"), "sync_if_needed manquant"
     assert hasattr(mod, "SYNC_FILES"), "SYNC_FILES manquant"
@@ -226,7 +230,9 @@ def test_worldgen_importable():
     spec = importlib.util.spec_from_file_location(
         "core.worldgen._impl", DEV_HUB_SERVER / "core" / "worldgen" / "_impl.py"
     )
+    assert spec is not None
     mod = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
     spec.loader.exec_module(mod)
     assert hasattr(mod, "WORLD_MAGIC"), "WORLD_MAGIC absent de _impl.py"
     assert hasattr(mod, "MISSIONS_MAGIC"), "MISSIONS_MAGIC absent"
