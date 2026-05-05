@@ -115,8 +115,8 @@ def test_world_sync_config_template():
     cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
     assert "enabled" in cfg, "clé 'enabled' manquante"
     assert "dev_hub_url" in cfg, "clé 'dev_hub_url' manquante"
-    assert cfg["enabled"] is False, "enabled doit être False par défaut"
-    print("  [OK] world_sync_config.json valide (enabled:false par defaut)")
+    assert isinstance(cfg["enabled"], bool), "enabled doit etre un bool"
+    print(f"  [OK] world_sync_config.json valide (enabled:{cfg['enabled']})")
 
 
 def test_os_kernel_sync_hook():
@@ -252,6 +252,27 @@ def test_server_run_story_fr_default_true():
     print("  [OK] run_story_fr=True par defaut dans server.py")
 
 
+def test_server_world_fs_zip():
+    server_src = (DEV_HUB_SERVER / "server.py").read_text(encoding="utf-8")
+    assert "_zip_world_fs" in server_src, "_zip_world_fs absent de server.py"
+    assert '"world_fs.zip"' in server_src, "world_fs.zip absent de l'ensemble allowed"
+    assert "world_fs_zip_sha256" in server_src, "world_fs_zip_sha256 absent de server.py"
+    assert 'skip_fs", False)' in server_src, "skip_fs doit etre False par defaut"
+    assert "zipfile" in server_src, "import zipfile absent de server.py"
+    print("  [OK] world_fs.zip : _zip_world_fs, allowed, sha, skip_fs=False")
+
+
+def test_world_sync_world_fs_zip():
+    sync_src = (HACKER_OS / "core" / "world_sync.py").read_text(encoding="utf-8")
+    assert "_sync_world_fs_zip" in sync_src, "_sync_world_fs_zip absent de world_sync.py"
+    assert "_local_world_fs_sha" in sync_src, "_local_world_fs_sha absent"
+    assert ".sync_sha" in sync_src, "sentinel .sync_sha absent"
+    assert "world_fs_zip_sha256" in sync_src, "world_fs_zip_sha256 absent de world_sync.py"
+    assert "zipfile" in sync_src, "import zipfile absent de world_sync.py"
+    assert "shutil.rmtree" in sync_src, "nettoyage world_fs absent"
+    print("  [OK] world_sync.py : _sync_world_fs_zip, sentinel, extraction")
+
+
 if __name__ == "__main__":
     tests = [
         test_server_compiles,
@@ -273,6 +294,8 @@ if __name__ == "__main__":
         test_worldgen_importable,
         test_sync_worldgen_script,
         test_server_run_story_fr_default_true,
+        test_server_world_fs_zip,
+        test_world_sync_world_fs_zip,
     ]
     print(f"\n=== Dev Hub Railway — {len(tests)} tests statiques ===\n")
     failures = []

@@ -20,6 +20,7 @@ import os
 import sys
 import time
 import uuid
+import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -100,6 +101,26 @@ def _token_ok(token: Optional[str], cookie: Optional[str]) -> bool:
     return (token or cookie or "") == DEV_HUB_TOKEN
 
 
+# ── Helpers worldgen ─────────────────────────────────────────────────────────
+
+def _zip_world_fs(save_dir: Path) -> Optional[str]:
+    """Zippe save_dir/world_fs/ → save_dir/world_fs.zip. Retourne SHA256 ou None."""
+    world_fs_dir = save_dir / "world_fs"
+    if not world_fs_dir.exists():
+        return None
+    zip_path = save_dir / "world_fs.zip"
+    try:
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED, allowZip64=True) as zf:
+            for file in sorted(world_fs_dir.rglob("*")):
+                if file.is_file():
+                    zf.write(file, file.relative_to(world_fs_dir))
+        sha = hashlib.sha256(zip_path.read_bytes()).hexdigest()
+        return sha
+    except Exception as exc:
+        print(f"[_zip_world_fs] erreur : {exc}")
+        return None
+
+
 # ── Worldgen worker ───────────────────────────────────────────────────────────
 
 def _run_worldgen(job_id: str, params: Dict[str, Any]) -> None:
@@ -133,11 +154,31 @@ def _run_worldgen(job_id: str, params: Dict[str, Any]) -> None:
             types=list(params.get("types", ["company", "government", "person", "public_wifi", "bank"])),
             tax_rate=float(params.get("tax_rate", 0.0)),
             save_dir=SAVE_DIR,
-            skip_fs=bool(params.get("skip_fs", True)),
+            skip_fs=bool(params.get("skip_fs", False)),
             run_story_fr=bool(params.get("run_story_fr", True)),
         )
 
         result = Pipeline(opts).run(on_progress=_push)
+
+        # Zipper world_fs si généré (skip_fs=False)
+        world_fs_zip_sha: Optional[str] = None
+        if not opts.skip_fs:
+            _push(99, "Archivage world_fs.zip…")
+            world_fs_zip_sha = _zip_world_fs(SAVE_DIR)
+            if world_fs_zip_sha:
+                # Injecter le SHA dans world.meta.json pour que le client le détecte
+                meta_path = SAVE_DIR / "world.meta.json"
+                try:
+                    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                    meta["world_fs_zip_sha256"] = world_fs_zip_sha
+                    meta_path.write_text(
+                        json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
+                    )
+                except Exception as _me:
+                    print(f"[_zip_world_fs] meta update failed : {_me}")
+                _push(100, f"world_fs.zip prêt (sha:{world_fs_zip_sha[:12]}…)")
+            else:
+                _push(100, "[WARN] world_fs.zip non créé (world_fs vide?)")
 
         job["status"] = "done"
         job["result"] = {
@@ -147,6 +188,7 @@ def _run_worldgen(job_id: str, params: Dict[str, Any]) -> None:
             "hosts": result.hosts,
             "world_sha256": result.world_sha256,
             "missions_sha256": result.missions_sha256,
+            "world_fs_zip_sha256": world_fs_zip_sha,
             "duration": round(time.time() - job["start_time"], 1),
         }
         _push(100, f"Terminé — {result.targets} cibles, {result.missions} missions.")
@@ -258,7 +300,7 @@ async def world_file(name: str) -> FileResponse:
     allowed = {
         "world.dat", "missions.dat", "market_seed.json",
         "world.meta.json", "missions.meta.json",
-        "story/story.json",
+        "story/story.json", "world_fs.zip",
     }
     clean = name.replace("\\", "/").lstrip("/")
     if clean not in allowed:
