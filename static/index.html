@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HackerOS — Dev Hub</title>
+<style>
+/* ── Reset & Base ─────────────────────────────────────────────────────────── */
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0b0f14;--bg2:#0d1117;--bg3:#111820;
+  --border:#1a2a3a;--cyan:#00d4ff;--green:#39ff14;
+  --yellow:#ffd700;--red:#ff4444;--orange:#ff8c00;
+  --purple:#bd93f9;--dim:#586069;--text:#c9d1d9;
+}
+body{background:var(--bg);color:var(--text);font-family:Consolas,'Courier New',monospace;
+  font-size:12px;min-height:100vh;display:flex;flex-direction:column;}
+::-webkit-scrollbar{width:6px;background:var(--bg2)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+header{background:var(--bg3);border-bottom:2px solid var(--border);
+  padding:11px 20px;display:flex;align-items:center;gap:14px;flex-shrink:0;}
+header h1{color:var(--cyan);font-size:14px;font-weight:700;letter-spacing:2px;}
+header .badge{background:var(--bg2);border:1px solid var(--border);
+  border-radius:3px;padding:3px 8px;font-size:9px;color:var(--dim);}
+header .spacer{flex:1}
+#world-status{font-size:10px;color:var(--dim);}
+
+/* ── Tabs ───────────────────────────────────────────────────────────────── */
+.tabs{display:flex;border-bottom:1px solid var(--border);background:var(--bg2);flex-shrink:0;}
+.tab-btn{padding:10px 28px;background:var(--bg3);color:var(--dim);border:none;
+  border-right:1px solid var(--border);cursor:pointer;font-family:inherit;
+  font-size:11px;font-weight:700;letter-spacing:1px;
+  border-top:2px solid transparent;transition:all .15s;}
+.tab-btn:hover{color:var(--text);background:#0e1c2c;}
+.tab-btn.active{background:var(--bg2);color:var(--cyan);border-top-color:var(--cyan);}
+.tab-panel{display:none;flex:1;overflow:hidden;}
+.tab-panel.active{display:flex;}
+
+/* ── Layout helpers ──────────────────────────────────────────────────────── */
+.panel-left{width:360px;min-width:320px;background:var(--bg2);
+  border-right:1px solid var(--border);overflow-y:auto;padding:16px;
+  display:flex;flex-direction:column;gap:8px;flex-shrink:0;}
+.panel-right{flex:1;padding:18px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;}
+
+.section-title{color:var(--dim);font-size:9px;font-weight:700;letter-spacing:1px;margin-top:4px;}
+.sep{height:1px;background:var(--border);margin:4px 0;}
+
+/* ── Form elements ───────────────────────────────────────────────────────── */
+.field{display:flex;align-items:center;gap:6px;margin:2px 0;}
+.field label{width:100px;color:var(--dim);font-size:9px;font-weight:700;flex-shrink:0;}
+.field select,.field input[type=text],.field input[type=number]{
+  flex:1;background:#0c1828;border:1px solid var(--border);border-radius:3px;
+  padding:4px 7px;color:var(--text);font-family:inherit;font-size:11px;outline:none;}
+.field select:focus,.field input:focus{border-color:var(--cyan);}
+.field input[type=number]{color:var(--yellow);font-weight:700;}
+
+.checkbox-row{display:flex;flex-wrap:wrap;gap:8px;margin:2px 0;}
+.chk{display:flex;align-items:center;gap:5px;cursor:pointer;font-size:11px;}
+.chk input{accent-color:var(--cyan);width:13px;height:13px;}
+
+/* ── Preset buttons ──────────────────────────────────────────────────────── */
+.preset-row{display:flex;gap:6px;}
+.preset-btn{flex:1;padding:5px;background:var(--bg3);border-radius:3px;
+  cursor:pointer;font-family:inherit;font-size:10px;font-weight:700;border:1px solid;}
+
+/* ── Action buttons ──────────────────────────────────────────────────────── */
+.btn-generate{width:100%;padding:12px;background:var(--bg3);color:var(--green);
+  border:1px solid #39ff1466;border-radius:5px;cursor:pointer;
+  font-family:inherit;font-size:13px;font-weight:700;letter-spacing:1px;}
+.btn-generate:hover{background:#0a2010;border-color:var(--green);}
+.btn-generate:disabled{color:var(--dim);border-color:var(--border);cursor:default;}
+.btn-stop{padding:12px;background:var(--bg3);color:var(--red);
+  border:1px solid #ff444455;border-radius:5px;cursor:pointer;
+  font-family:inherit;font-size:13px;font-weight:700;}
+.btn-stop:hover{background:#200808;border-color:var(--red);}
+.btn-stop:disabled{color:var(--dim);border-color:var(--border);cursor:default;}
+.action-row{display:flex;gap:8px;}
+.action-row .btn-generate{flex:3}
+.action-row .btn-stop{flex:1}
+
+/* ── Stat cards ──────────────────────────────────────────────────────────── */
+.cards{display:flex;gap:8px;flex-wrap:wrap;}
+.card{background:var(--bg3);border:1px solid var(--border);border-radius:6px;
+  padding:10px 16px;min-width:90px;flex:1;}
+.card .val{font-size:22px;font-weight:700;}
+.card .key{font-size:9px;color:var(--dim);font-weight:700;margin-top:2px;}
+
+/* ── Progress ────────────────────────────────────────────────────────────── */
+.progress-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:3px;height:22px;overflow:hidden;}
+.progress-bar{height:100%;background:linear-gradient(to right,var(--cyan),#0066aa);
+  width:0%;transition:width .3s;display:flex;align-items:center;padding-left:8px;
+  font-size:9px;font-weight:700;color:#fff;}
+.status-row{display:flex;justify-content:space-between;align-items:center;gap:8px;}
+#gen-status{color:var(--dim);font-size:10px;}
+#gen-elapsed{color:var(--dim);font-size:9px;}
+
+/* ── Log ─────────────────────────────────────────────────────────────────── */
+.log-header{display:flex;align-items:center;gap:6px;}
+.log-header span{flex:1}
+.btn-sm{padding:2px 8px;background:var(--bg3);border:1px solid var(--border);
+  border-radius:3px;cursor:pointer;font-family:inherit;font-size:10px;color:var(--dim);}
+.btn-sm:hover{color:var(--text);border-color:var(--cyan);}
+#gen-log{flex:1;min-height:180px;background:var(--bg);border:1px solid var(--border);
+  border-radius:4px;padding:8px 10px;overflow-y:auto;
+  font-size:10px;color:var(--green);line-height:1.6;white-space:pre-wrap;}
+
+/* ── Story tab ───────────────────────────────────────────────────────────── */
+#story-panel{flex:1;padding:18px;overflow-y:auto;}
+.beat-card{background:var(--bg3);border:1px solid var(--border);border-radius:6px;
+  padding:12px 14px;margin-bottom:8px;}
+.beat-header{display:flex;gap:10px;align-items:center;margin-bottom:6px;}
+.beat-id{color:var(--cyan);font-weight:700;font-size:11px;}
+.beat-act{padding:2px 7px;border-radius:10px;font-size:9px;font-weight:700;}
+.beat-obj{color:var(--dim);font-size:10px;flex:1;}
+.beat-desc{color:var(--text);font-size:11px;line-height:1.5;}
+.beat-roles{margin-top:6px;font-size:10px;color:var(--purple);}
+#story-empty{color:var(--dim);font-size:12px;padding:32px;text-align:center;}
+.story-search{padding:8px 0;display:flex;gap:8px;align-items:center;}
+.story-search input{flex:1;background:#0c1828;border:1px solid var(--border);
+  border-radius:3px;padding:5px 8px;color:var(--text);font-family:inherit;font-size:11px;outline:none;}
+
+/* ── Missions tab ───────────────────────────────────────────────────────── */
+.missions-toolbar{display:flex;gap:8px;align-items:center;padding:12px 16px;
+  background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0;}
+.missions-toolbar select{background:#0c1828;border:1px solid var(--border);
+  border-radius:3px;padding:4px 8px;color:var(--text);font-family:inherit;font-size:11px;}
+.missions-toolbar .spacer{flex:1}
+#missions-count{color:var(--dim);font-size:10px;}
+.missions-list{flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:6px;}
+.mission-card{background:var(--bg3);border:1px solid var(--border);border-radius:5px;
+  padding:10px 12px;cursor:pointer;transition:border-color .15s;}
+.mission-card:hover{border-color:var(--cyan);}
+.mc-header{display:flex;gap:8px;align-items:center;margin-bottom:4px;}
+.mc-id{color:var(--dim);font-size:9px;width:80px;flex-shrink:0;}
+.mc-title{color:var(--cyan);font-weight:700;font-size:11px;flex:1;}
+.mc-diff{font-size:9px;font-weight:700;padding:2px 6px;border-radius:3px;}
+.mc-body{display:flex;gap:12px;font-size:10px;color:var(--dim);}
+.mc-obj{color:var(--text);}
+
+/* ── Diff colors ─────────────────────────────────────────────────────────── */
+.diff-easy{color:var(--green);border:1px solid #39ff1455;}
+.diff-medium{color:var(--cyan);border:1px solid #00d4ff55;}
+.diff-hard{color:var(--yellow);border:1px solid #ffd70055;}
+.diff-elite{color:var(--orange);border:1px solid #ff8c0055;}
+.diff-insane{color:var(--red);border:1px solid #ff444455;}
+
+/* ── Obj colors ──────────────────────────────────────────────────────────── */
+.obj-scan{color:var(--cyan)}.obj-creds{color:var(--orange)}
+.obj-loot{color:var(--green)}.obj-root{color:var(--red)}
+.obj-wallet{color:var(--yellow)}.obj-intel{color:var(--purple)}
+.obj-pivot{color:var(--purple)}.obj-logs{color:var(--dim)}
+
+/* ── Loading spinner ─────────────────────────────────────────────────────── */
+.loader{display:flex;align-items:center;justify-content:center;padding:40px;
+  color:var(--dim);font-size:12px;gap:8px;}
+.spinner{width:14px;height:14px;border:2px solid var(--border);
+  border-top-color:var(--cyan);border-radius:50%;animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────────────────────── -->
+<header>
+  <h1>▌ HACKEROS &nbsp;///&nbsp; DEV HUB</h1>
+  <span class="badge">Railway</span>
+  <span class="badge" id="version-badge">v2.0</span>
+  <span class="spacer"></span>
+  <span id="world-status">Chargement…</span>
+</header>
+
+<!-- ── Tabs ─────────────────────────────────────────────────────────────── -->
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchTab('monde')">🌐&nbsp; MONDE</button>
+  <button class="tab-btn" onclick="switchTab('histoire')">📖&nbsp; HISTOIRE</button>
+  <button class="tab-btn" onclick="switchTab('missions')">🗂&nbsp; MISSIONS</button>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     TAB : MONDE
+════════════════════════════════════════════════════════════════════════ -->
+<div class="tab-panel active" id="tab-monde">
+  <div class="panel-left">
+
+    <div class="section-title">⚙ GÉNÉRATEUR DE MONDE</div>
+    <div class="sep"></div>
+
+    <!-- Seed -->
+    <div class="field">
+      <label>SEED</label>
+      <input type="number" id="f-seed" value="123" min="1" max="999999" style="color:var(--yellow);font-weight:700;">
+      <button class="btn-sm" onclick="randomSeed()" title="Seed aléatoire">🎲</button>
+    </div>
+
+    <!-- Présets -->
+    <div class="sep"></div>
+    <div class="section-title">◈ PRÉSETS RAPIDES</div>
+    <div class="preset-row">
+      <button class="preset-btn" style="color:var(--yellow);border-color:#ffd70044"
+        onclick="applyPreset('test')">⚡ Test</button>
+      <button class="preset-btn" style="color:var(--cyan);border-color:#00d4ff44"
+        onclick="applyPreset('std')">◈ Standard</button>
+      <button class="preset-btn" style="color:var(--green);border-color:#39ff1444"
+        onclick="applyPreset('xl')">▶▶ XL</button>
+    </div>
+
+    <!-- Monde -->
+    <div class="sep"></div>
+    <div class="section-title">◈ MONDE</div>
+
+    <div class="field">
+      <label>TAILLE</label>
+      <select id="f-size">
+        <option value="S">S — 15 cibles</option>
+        <option value="M">M — 45 cibles</option>
+        <option value="L" selected>L — 140 cibles</option>
+        <option value="XL">XL — 550 cibles</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>DIFFICULTÉ</label>
+      <select id="f-diff">
+        <option value="easy">Easy</option>
+        <option value="normal" selected>Normal</option>
+        <option value="hard">Hard</option>
+        <option value="insane">Insane</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>ÉCONOMIE</label>
+      <select id="f-economy" style="color:var(--yellow)">
+        <option value="0.5">x0.5 — Low</option>
+        <option value="1.0" selected>x1.0 — Normal</option>
+        <option value="1.5">x1.5 — Rich</option>
+        <option value="2.0">x2.0 — Wealthy</option>
+      </select>
+    </div>
+
+    <!-- Missions -->
+    <div class="sep"></div>
+    <div class="section-title">◈ MISSIONS</div>
+    <div class="field">
+      <label>NOMBRE</label>
+      <select id="f-missions">
+        <option value="15">15 — Rapide</option>
+        <option value="45" selected>45 — Moyen</option>
+        <option value="140">140 — Complet</option>
+        <option value="550">550 — Massif</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>CRYPTO TAX</label>
+      <select id="f-tax" style="color:var(--red)">
+        <option value="0.0" selected>0%</option>
+        <option value="0.05">5%</option>
+        <option value="0.10">10%</option>
+        <option value="0.15">15%</option>
+        <option value="0.20">20%</option>
+        <option value="0.25">25%</option>
+        <option value="0.30">30%</option>
+      </select>
+    </div>
+
+    <!-- Réseau & Zones -->
+    <div class="sep"></div>
+    <div class="section-title">◈ RÉSEAU & ZONES</div>
+    <div class="field">
+      <label>WIFI DENSITÉ</label>
+      <select id="f-wifi">
+        <option value="low">Low</option>
+        <option value="medium" selected>Medium</option>
+        <option value="high">High</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>DISTRICTS</label>
+      <select id="f-districts">
+        <option value="auto" selected>Auto</option>
+        <option value="low">Low</option>
+        <option value="high">High</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>RÉGION</label>
+      <input type="text" id="f-region" value="eu" list="region-list">
+      <datalist id="region-list">
+        <option value="eu"><option value="us"><option value="as">
+        <option value="af"><option value="am"><option value="oc">
+      </datalist>
+    </div>
+
+    <!-- Types de cibles -->
+    <div class="sep"></div>
+    <div class="section-title">◈ TYPES DE CIBLES</div>
+    <div class="checkbox-row">
+      <label class="chk" style="color:var(--orange)">
+        <input type="checkbox" id="chk-company" checked> Company</label>
+      <label class="chk" style="color:var(--cyan)">
+        <input type="checkbox" id="chk-person" checked> Person</label>
+      <label class="chk" style="color:var(--red)">
+        <input type="checkbox" id="chk-gov" checked> Gov</label>
+      <label class="chk" style="color:var(--green)">
+        <input type="checkbox" id="chk-wifi" checked> WiFi</label>
+      <label class="chk" style="color:var(--yellow)">
+        <input type="checkbox" id="chk-bank" checked> Bank</label>
+    </div>
+    <div style="display:flex;gap:6px;margin-top:2px">
+      <button class="btn-sm" onclick="checkAll(true)">✓ Tout</button>
+      <button class="btn-sm" onclick="checkAll(false)">✕ Aucun</button>
+    </div>
+
+    <!-- Options avancées -->
+    <div class="sep"></div>
+    <div class="section-title">◈ OPTIONS AVANCÉES</div>
+    <label class="chk" title="Ne génère pas world_fs/ — beaucoup plus rapide">
+      <input type="checkbox" id="chk-skipfs" checked> Skip filesystem (rapide)
+    </label>
+    <label class="chk" title="Génère le scénario story_fr">
+      <input type="checkbox" id="chk-story" checked> Générer histoire
+    </label>
+
+    <div style="flex:1"></div>
+    <div class="sep"></div>
+    <div class="action-row">
+      <button class="btn-generate" id="btn-gen" onclick="startGenerate()">▶▶&nbsp; GÉNÉRER</button>
+      <button class="btn-stop" id="btn-stop" onclick="stopGenerate()" disabled>■ STOP</button>
+    </div>
+  </div><!-- /panel-left -->
+
+  <div class="panel-right">
+    <!-- Cards stats -->
+    <div class="cards">
+      <div class="card"><div class="val" id="stat-targets" style="color:var(--orange)">—</div><div class="key">CIBLES</div></div>
+      <div class="card"><div class="val" id="stat-missions" style="color:var(--cyan)">—</div><div class="key">MISSIONS</div></div>
+      <div class="card"><div class="val" id="stat-networks" style="color:var(--green)">—</div><div class="key">RÉSEAUX</div></div>
+      <div class="card"><div class="val" id="stat-hosts" style="color:var(--purple)">—</div><div class="key">HÔTES</div></div>
+    </div>
+
+    <div class="section-title">◈ PROGRESSION</div>
+    <div class="progress-wrap">
+      <div class="progress-bar" id="prog-bar">0%</div>
+    </div>
+    <div class="status-row">
+      <span id="gen-status">En attente — configurez les paramètres puis cliquez GÉNÉRER</span>
+      <span id="gen-elapsed"></span>
+    </div>
+
+    <div class="sep"></div>
+
+    <div class="log-header">
+      <span class="section-title">◈ LOG</span>
+      <button class="btn-sm" onclick="document.getElementById('gen-log').textContent=''">✕ Effacer</button>
+    </div>
+    <pre id="gen-log"></pre>
+  </div><!-- /panel-right -->
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     TAB : HISTOIRE
+════════════════════════════════════════════════════════════════════════ -->
+<div class="tab-panel" id="tab-histoire" style="flex-direction:column">
+  <div class="missions-toolbar">
+    <span style="color:var(--cyan);font-weight:700;font-size:11px">📖 SCÉNARIO</span>
+    <div class="story-search" style="flex:1;padding:0">
+      <input type="text" id="story-filter" placeholder="Filtrer beats…"
+        oninput="filterBeats()" style="background:#0c1828;border:1px solid var(--border);
+        border-radius:3px;padding:4px 8px;color:var(--text);font-family:inherit;
+        font-size:11px;outline:none;flex:1">
+    </div>
+    <button class="btn-sm" onclick="loadStory()">↺ Recharger</button>
+    <span class="spacer"></span>
+    <span id="story-count" style="color:var(--dim);font-size:10px"></span>
+  </div>
+  <div id="story-panel"><div class="loader"><div class="spinner"></div>Chargement…</div></div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     TAB : MISSIONS
+════════════════════════════════════════════════════════════════════════ -->
+<div class="tab-panel" id="tab-missions" style="flex-direction:column">
+  <div class="missions-toolbar">
+    <span style="color:var(--cyan);font-weight:700;font-size:11px">🗂 MISSIONS</span>
+    <select id="filter-diff" onchange="filterMissions()" style="width:120px">
+      <option value="">Toutes les diffis</option>
+      <option value="easy">Easy</option>
+      <option value="medium">Medium</option>
+      <option value="hard">Hard</option>
+      <option value="elite">Elite</option>
+      <option value="insane">Insane</option>
+    </select>
+    <select id="filter-obj" onchange="filterMissions()" style="width:150px">
+      <option value="">Tous les objectifs</option>
+      <option value="scan_network">scan_network</option>
+      <option value="obtain_creds">obtain_creds</option>
+      <option value="loot_file">loot_file</option>
+      <option value="reach_root">reach_root</option>
+      <option value="drain_wallet">drain_wallet</option>
+      <option value="read_intel_file">read_intel_file</option>
+      <option value="pivot_to_related_target">pivot_to_related</option>
+      <option value="clean_logs">clean_logs</option>
+    </select>
+    <button class="btn-sm" onclick="loadMissions()">↺ Recharger</button>
+    <span class="spacer"></span>
+    <span id="missions-count" style="color:var(--dim);font-size:10px"></span>
+  </div>
+  <div class="missions-list" id="missions-list">
+    <div class="loader"><div class="spinner"></div>Chargement…</div>
+  </div>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════════════
+   State
+══════════════════════════════════════════════════════════════════════════ */
+let _currentJobId = null;
+let _evtSource    = null;
+let _genStart     = 0;
+let _elapsedTimer = null;
+let _allMissions  = [];
+let _allBeats     = [];
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Tab switching
+══════════════════════════════════════════════════════════════════════════ */
+function switchTab(id) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  event.currentTarget.classList.add('active');
+  document.getElementById('tab-' + id).classList.add('active');
+  if (id === 'histoire' && _allBeats.length === 0) loadStory();
+  if (id === 'missions' && _allMissions.length === 0) loadMissions();
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   World meta (header status)
+══════════════════════════════════════════════════════════════════════════ */
+async function loadWorldMeta() {
+  try {
+    const r = await fetch('/api/world/meta');
+    if (!r.ok) { document.getElementById('world-status').textContent = 'Aucun monde'; return; }
+    const m = await r.json();
+    const sha = (m.world_file_sha256 || '').slice(0, 8);
+    const seed = m.seed !== undefined ? `seed:${m.seed}` : '';
+    const hosts = m.hosts_total ? `${m.hosts_total} hôtes` : '';
+    document.getElementById('world-status').textContent =
+      [seed, hosts, sha ? `sha:${sha}…` : ''].filter(Boolean).join(' · ');
+  } catch(_) {
+    document.getElementById('world-status').textContent = 'Railway: erreur';
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   MONDE TAB — generation
+══════════════════════════════════════════════════════════════════════════ */
+function randomSeed() {
+  document.getElementById('f-seed').value = Math.floor(Math.random() * 999999) + 1;
+}
+
+function checkAll(v) {
+  ['company','person','gov','wifi','bank'].forEach(id =>
+    document.getElementById('chk-' + id).checked = v);
+}
+
+const PRESETS = {
+  test: () => {
+    document.getElementById('f-size').value = 'S';
+    document.getElementById('f-missions').value = '15';
+    document.getElementById('chk-skipfs').checked = true;
+    randomSeed();
+  },
+  std: () => {
+    document.getElementById('f-size').value = 'L';
+    document.getElementById('f-missions').value = '140';
+    document.getElementById('chk-skipfs').checked = false;
+  },
+  xl: () => {
+    document.getElementById('f-size').value = 'XL';
+    document.getElementById('f-missions').value = '550';
+    document.getElementById('chk-skipfs').checked = false;
+    randomSeed();
+  },
+};
+function applyPreset(k) { PRESETS[k](); }
+
+function _getTypes() {
+  const map = {company:'company', person:'person', gov:'government',
+    wifi:'public_wifi', bank:'bank'};
+  return Object.entries(map).filter(([k]) =>
+    document.getElementById('chk-' + k).checked).map(([,v]) => v);
+}
+
+function _params() {
+  return {
+    seed: parseInt(document.getElementById('f-seed').value) || 42,
+    size: document.getElementById('f-size').value,
+    difficulty: document.getElementById('f-diff').value,
+    economy_mult: parseFloat(document.getElementById('f-economy').value),
+    mission_count: parseInt(document.getElementById('f-missions').value),
+    tax_rate: parseFloat(document.getElementById('f-tax').value),
+    wifi_density: document.getElementById('f-wifi').value,
+    districts_mode: document.getElementById('f-districts').value,
+    region: document.getElementById('f-region').value.trim() || 'eu',
+    types: _getTypes(),
+    skip_fs: document.getElementById('chk-skipfs').checked,
+    run_story_fr: document.getElementById('chk-story').checked,
+  };
+}
+
+function _log(msg) {
+  const el = document.getElementById('gen-log');
+  el.textContent += msg + '\n';
+  el.scrollTop = el.scrollHeight;
+}
+
+function _setProgress(pct, msg) {
+  const bar = document.getElementById('prog-bar');
+  const p = Math.max(0, Math.min(100, pct));
+  bar.style.width = p + '%';
+  bar.textContent = p + '%';
+  if (msg) document.getElementById('gen-status').textContent = msg;
+}
+
+function _startElapsed() {
+  _genStart = Date.now();
+  clearInterval(_elapsedTimer);
+  _elapsedTimer = setInterval(() => {
+    const s = ((Date.now() - _genStart) / 1000).toFixed(1);
+    document.getElementById('gen-elapsed').textContent = s + 's';
+  }, 500);
+}
+
+function _stopElapsed() { clearInterval(_elapsedTimer); }
+
+async function startGenerate() {
+  const types = _getTypes();
+  if (!types.length) { alert('Sélectionnez au moins un type de cible.'); return; }
+
+  document.getElementById('btn-gen').disabled = true;
+  document.getElementById('btn-stop').disabled = false;
+  _setProgress(0, 'Envoi de la requête…');
+  _log('▶▶ Démarrage de la génération…');
+  _startElapsed();
+
+  const r = await fetch('/api/generate', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(_params()),
+  });
+  if (!r.ok) {
+    _log('[ERREUR] ' + await r.text());
+    _resetGenUI();
+    return;
+  }
+  const {job_id} = await r.json();
+  _currentJobId = job_id;
+
+  _evtSource = new EventSource('/api/events/' + job_id);
+  _evtSource.onmessage = e => {
+    const d = JSON.parse(e.data);
+    _setProgress(d.pct, d.msg);
+    _log(`[${d.pct >= 0 ? String(d.pct).padStart(3) : 'ERR'}%] ${d.msg}`);
+  };
+  _evtSource.addEventListener('finish', e => {
+    const d = JSON.parse(e.data);
+    _evtSource.close(); _evtSource = null;
+    _stopElapsed();
+    if (d.status === 'done') {
+      const res = d.result;
+      document.getElementById('stat-targets').textContent  = res.targets;
+      document.getElementById('stat-missions').textContent = res.missions;
+      document.getElementById('stat-networks').textContent = res.networks;
+      document.getElementById('stat-hosts').textContent    = res.hosts;
+      _log(`\n✓ Terminé en ${res.duration}s`);
+      _log(`  SHA monde    : ${(res.world_sha256||'').slice(0,16)}…`);
+      _log(`  SHA missions : ${(res.missions_sha256||'').slice(0,16)}…`);
+      loadWorldMeta();
+      _allMissions = []; _allBeats = [];
+    } else {
+      _log('\n[ERREUR] ' + (d.error || '?'));
+    }
+    _resetGenUI();
+  });
+  _evtSource.onerror = () => {
+    _log('[SSE] Connexion interrompue.');
+    _evtSource && _evtSource.close(); _evtSource = null;
+    _stopElapsed(); _resetGenUI();
+  };
+}
+
+function stopGenerate() {
+  if (_evtSource) { _evtSource.close(); _evtSource = null; }
+  _log('■ Génération arrêtée.');
+  _stopElapsed(); _resetGenUI();
+}
+
+function _resetGenUI() {
+  document.getElementById('btn-gen').disabled = false;
+  document.getElementById('btn-stop').disabled = true;
+  _currentJobId = null;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   HISTOIRE TAB
+══════════════════════════════════════════════════════════════════════════ */
+const ACT_COLORS = {1:'#00d4ff',2:'#39ff14',3:'#ffd700',4:'#ff8c00',5:'#ff4444'};
+const OBJ_LABELS = {
+  scan_network:'SCAN',obtain_creds:'CREDS',loot_file:'LOOT',reach_root:'ROOT',
+  drain_wallet:'WALLET',read_intel_file:'INTEL',pivot_to_related_target:'PIVOT',
+  clean_logs:'LOGS',
+};
+
+async function loadStory() {
+  document.getElementById('story-panel').innerHTML =
+    '<div class="loader"><div class="spinner"></div>Chargement…</div>';
+  try {
+    const r = await fetch('/api/story');
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({error:'Erreur inconnue'}));
+      document.getElementById('story-panel').innerHTML =
+        `<div id="story-empty">${err.error || 'story.json absent — générez un monde d\'abord.'}</div>`;
+      return;
+    }
+    const data = await r.json();
+    _allBeats = (data.beats || data.story || []);
+    document.getElementById('story-count').textContent = `${_allBeats.length} beats`;
+    renderBeats(_allBeats);
+  } catch(e) {
+    document.getElementById('story-panel').innerHTML =
+      `<div id="story-empty">Erreur: ${e.message}</div>`;
+  }
+}
+
+function renderBeats(beats) {
+  const sp = document.getElementById('story-panel');
+  if (!beats.length) {
+    sp.innerHTML = '<div id="story-empty">Aucun beat trouvé.</div>'; return;
+  }
+  sp.innerHTML = beats.map(b => {
+    const act = b.act || 1;
+    const color = ACT_COLORS[act] || '#c9d1d9';
+    const obj = b.objective || b.objective_type || '—';
+    const objLabel = OBJ_LABELS[obj] || obj;
+    const roles = (b.roles || []).join(', ');
+    return `<div class="beat-card">
+      <div class="beat-header">
+        <span class="beat-id">${b.beat_id || b.id || '?'}</span>
+        <span class="beat-act" style="background:${color}22;color:${color};border:1px solid ${color}44">Acte ${act}</span>
+        <span class="beat-obj">[${objLabel}]</span>
+      </div>
+      <div class="beat-desc">${escHtml(b.description || b.title || '')}</div>
+      ${roles ? `<div class="beat-roles">Rôles : ${escHtml(roles)}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function filterBeats() {
+  const q = document.getElementById('story-filter').value.toLowerCase();
+  const filtered = q
+    ? _allBeats.filter(b =>
+        (b.beat_id||b.id||'').toLowerCase().includes(q) ||
+        (b.description||b.title||'').toLowerCase().includes(q) ||
+        (b.objective||'').toLowerCase().includes(q))
+    : _allBeats;
+  document.getElementById('story-count').textContent = `${filtered.length} / ${_allBeats.length} beats`;
+  renderBeats(filtered);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   MISSIONS TAB
+══════════════════════════════════════════════════════════════════════════ */
+const DIFF_CLASS = {easy:'diff-easy',medium:'diff-medium',hard:'diff-hard',
+  elite:'diff-elite',insane:'diff-insane'};
+const OBJ_CLASS = {scan_network:'obj-scan',obtain_creds:'obj-creds',loot_file:'obj-loot',
+  reach_root:'obj-root',drain_wallet:'obj-wallet',read_intel_file:'obj-intel',
+  pivot_to_related_target:'obj-pivot',clean_logs:'obj-logs'};
+
+async function loadMissions() {
+  document.getElementById('missions-list').innerHTML =
+    '<div class="loader"><div class="spinner"></div>Chargement…</div>';
+  try {
+    const r = await fetch('/api/missions');
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({error:'Erreur inconnue'}));
+      document.getElementById('missions-list').innerHTML =
+        `<div class="loader">${err.error || 'missions.dat absent — générez un monde d\'abord.'}</div>`;
+      return;
+    }
+    const data = await r.json();
+    _allMissions = data.missions || [];
+    document.getElementById('missions-count').textContent = `${_allMissions.length} missions`;
+    filterMissions();
+  } catch(e) {
+    document.getElementById('missions-list').innerHTML =
+      `<div class="loader">Erreur: ${e.message}</div>`;
+  }
+}
+
+function filterMissions() {
+  const diff = document.getElementById('filter-diff').value;
+  const obj  = document.getElementById('filter-obj').value;
+  let list = _allMissions;
+  if (diff) list = list.filter(m => (m.difficulty||'') === diff);
+  if (obj)  list = list.filter(m => ((m.objective||{}).type||'') === obj);
+  document.getElementById('missions-count').textContent =
+    `${list.length} / ${_allMissions.length} missions`;
+  renderMissions(list);
+}
+
+function renderMissions(missions) {
+  const el = document.getElementById('missions-list');
+  if (!missions.length) {
+    el.innerHTML = '<div class="loader">Aucune mission correspondante.</div>'; return;
+  }
+  el.innerHTML = missions.map(m => {
+    const diff  = (m.difficulty || 'medium').toLowerCase();
+    const otype = (m.objective || {}).type || '—';
+    const dc    = DIFF_CLASS[diff] || '';
+    const oc    = OBJ_CLASS[otype] || '';
+    const reward= m.reward ? Object.entries(m.reward).map(([k,v]) => `${k}:${v}`).join(' ') : '';
+    return `<div class="mission-card">
+      <div class="mc-header">
+        <span class="mc-id">${escHtml(m.mission_id||'?')}</span>
+        <span class="mc-title">${escHtml(m.title||'Sans titre')}</span>
+        <span class="mc-diff ${dc}">${diff}</span>
+      </div>
+      <div class="mc-body">
+        <span class="mc-obj ${oc}">[${OBJ_LABELS[otype]||otype}]</span>
+        ${m.network_id ? `<span>net:${escHtml(m.network_id)}</span>` : ''}
+        ${reward ? `<span style="color:var(--yellow)">${escHtml(reward)}</span>` : ''}
+        ${m.client ? `<span>client:${escHtml(m.client)}</span>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Utils
+══════════════════════════════════════════════════════════════════════════ */
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Init
+══════════════════════════════════════════════════════════════════════════ */
+loadWorldMeta();
+</script>
+</body>
+</html>
