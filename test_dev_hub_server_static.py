@@ -80,9 +80,10 @@ def test_server_routes():
 
 def test_server_hacker_os_path():
     server_src = (DEV_HUB_SERVER / "server.py").read_text(encoding="utf-8")
-    assert "_HACKER_OS" in server_src, "sys.path hacker_os absent de server.py"
+    assert "_CORE_ROOT" in server_src, "_CORE_ROOT absent de server.py"
     assert 'sys.path.insert' in server_src, "sys.path.insert absent de server.py"
-    print("  [OK] sys.path hacker_os present dans server.py")
+    assert "core/worldgen" in server_src, "detection core/worldgen absente"
+    print("  [OK] path detection core/worldgen present dans server.py")
 
 
 def test_server_auth_check():
@@ -166,6 +167,78 @@ def test_requirements():
     print("  [OK] requirements.txt contient fastapi et uvicorn")
 
 
+WORLDGEN_FILES = [
+    "core/__init__.py",
+    "core/world_codec.py",
+    "core/worldgen/__init__.py",
+    "core/worldgen/_impl.py",
+    "core/worldgen/pipeline.py",
+    "core/worldgen/export.py",
+    "core/worldgen/samples.py",
+    "core/worldgen/market_seed.py",
+    "core/worldgen/audit.py",
+]
+
+
+def test_worldgen_bundle_present():
+    import py_compile
+    missing = []
+    for rel in WORLDGEN_FILES:
+        p = DEV_HUB_SERVER / rel
+        if not p.exists():
+            missing.append(rel)
+    assert not missing, f"Fichiers worldgen manquants : {missing}"
+    for rel in WORLDGEN_FILES:
+        p = DEV_HUB_SERVER / rel
+        if p.stat().st_size > 0:
+            py_compile.compile(str(p), doraise=True)
+    print(f"  [OK] {len(WORLDGEN_FILES)} fichiers worldgen bundled et compilables")
+
+
+def test_worldgen_bundle_no_qt():
+    for rel in WORLDGEN_FILES:
+        p = DEV_HUB_SERVER / rel
+        if not p.exists() or p.stat().st_size == 0:
+            continue
+        src = p.read_text(encoding="utf-8")
+        assert "PySide6" not in src, f"PySide6 detecte dans {rel}"
+        assert "PyQt" not in src, f"PyQt detecte dans {rel}"
+    print("  [OK] aucun import Qt dans les fichiers worldgen bundled")
+
+
+def test_worldgen_importable():
+    import importlib.util
+    if str(DEV_HUB_SERVER) not in sys.path:
+        sys.path.insert(0, str(DEV_HUB_SERVER))
+    spec = importlib.util.spec_from_file_location(
+        "core.worldgen._impl", DEV_HUB_SERVER / "core" / "worldgen" / "_impl.py"
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    assert hasattr(mod, "WORLD_MAGIC"), "WORLD_MAGIC absent de _impl.py"
+    assert hasattr(mod, "MISSIONS_MAGIC"), "MISSIONS_MAGIC absent"
+    print("  [OK] core/worldgen/_impl.py importable et fonctionnel")
+
+
+def test_sync_worldgen_script():
+    import py_compile
+    p = DEV_HUB_SERVER / "sync_worldgen.py"
+    assert p.exists(), "sync_worldgen.py absent"
+    py_compile.compile(str(p), doraise=True)
+    src = p.read_text(encoding="utf-8")
+    assert "world_codec.py" in src
+    assert "worldgen/_impl.py" in src or "worldgen\\\\" in src or "_impl.py" in src
+    assert "shutil.copy2" in src
+    print("  [OK] sync_worldgen.py present et valide")
+
+
+def test_server_run_story_fr_default_false():
+    server_src = (DEV_HUB_SERVER / "server.py").read_text(encoding="utf-8")
+    assert 'run_story_fr", False)' in server_src, \
+        "run_story_fr doit etre False par defaut dans server.py"
+    print("  [OK] run_story_fr=False par defaut dans server.py")
+
+
 if __name__ == "__main__":
     tests = [
         test_server_compiles,
@@ -181,6 +254,11 @@ if __name__ == "__main__":
         test_static_index_exists,
         test_railway_json,
         test_requirements,
+        test_worldgen_bundle_present,
+        test_worldgen_bundle_no_qt,
+        test_worldgen_importable,
+        test_sync_worldgen_script,
+        test_server_run_story_fr_default_false,
     ]
     print(f"\n=== Dev Hub Railway — {len(tests)} tests statiques ===\n")
     failures = []

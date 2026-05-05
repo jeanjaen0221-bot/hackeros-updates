@@ -15,8 +15,12 @@ Interface web de génération de monde pour HackerOS, déployée sur Railway.
 
 Dans ton projet Railway :
 1. **New Service → GitHub Repo** (pointer sur ce repo)
-2. Dans les paramètres du service → **Settings → Source → Root Directory** : `dev_hub_server`
-3. Railway détecte automatiquement `requirements.txt` et `railway.json`
+2. Dans les paramètres du service → **Settings → Source → Root Directory** : **LAISSER VIDE** (= repo root)
+   > ⚠️ Ne pas mettre `dev_hub_server` ici — Railway ne copierait que ce sous-dossier
+   > et `hacker_os/` (nécessaire pour worldgen) serait absent du container.
+3. Dans **Settings → Deploy** :
+   - **Build Command** : `pip install -r dev_hub_server/requirements.txt`
+   - **Start Command** : `python dev_hub_server/server.py`
 
 ### 2. Ajouter un Volume persistant
 

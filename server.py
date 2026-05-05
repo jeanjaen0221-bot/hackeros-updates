@@ -24,11 +24,39 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-# ── Chemin vers hacker_os ─────────────────────────────────────────────────────
+# ── Chemin vers core.worldgen ─────────────────────────────────────────────────
+# Priorité :
+#   1. dev_hub_server/core/worldgen (bundlé — Railway Root Dir = dev_hub_server)
+#   2. HACKER_OS_PATH env var (override manuel)
+#   3. hacker_os/ sibling (repo complet en dev local)
+#   4. cwd/hacker_os (fallback)
 _HERE = Path(__file__).resolve().parent
-_HACKER_OS = _HERE.parent / "hacker_os"
-if str(_HACKER_OS) not in sys.path:
-    sys.path.insert(0, str(_HACKER_OS))
+_env_hacker = os.environ.get("HACKER_OS_PATH", "").strip()
+
+# _CORE_ROOT : dossier dont le sous-dossier core/worldgen est importable
+_CORE_ROOT: Path | None = None
+for _candidate in [
+    _HERE,                               # core/ bundlé dans dev_hub_server/ (Railway ✓)
+    Path(_env_hacker) if _env_hacker else None,
+    _HERE.parent / "hacker_os",          # repo complet en dev local
+    Path(os.getcwd()) / "hacker_os",     # cwd fallback
+]:
+    if _candidate is None:
+        continue
+    if (_candidate / "core" / "worldgen").is_dir():
+        _CORE_ROOT = _candidate
+        break
+
+if _CORE_ROOT is None:
+    print(
+        "[WARN] core/worldgen introuvable. La generation echouera.\n"
+        "  Lancez 'python dev_hub_server/sync_worldgen.py' pour copier les fichiers worldgen,\n"
+        "  ou definir HACKER_OS_PATH=/chemin/vers/hacker_os"
+    )
+else:
+    if str(_CORE_ROOT) not in sys.path:
+        sys.path.insert(0, str(_CORE_ROOT))
+    print(f"[DevHub] core.worldgen trouve dans : {_CORE_ROOT}")
 
 from fastapi import Cookie, FastAPI, HTTPException, Query, Request
 from fastapi.responses import (
@@ -86,6 +114,11 @@ def _run_worldgen(job_id: str, params: Dict[str, Any]) -> None:
         job["events"].append(event)
 
     try:
+        if _CORE_ROOT is None:
+            raise ImportError(
+                "core/worldgen introuvable. "
+                "Lancez sync_worldgen.py ou definir HACKER_OS_PATH."
+            )
         from core.worldgen import Pipeline, PipelineOptions  # type: ignore
 
         opts = PipelineOptions(
@@ -101,7 +134,8 @@ def _run_worldgen(job_id: str, params: Dict[str, Any]) -> None:
             tax_rate=float(params.get("tax_rate", 0.0)),
             save_dir=SAVE_DIR,
             skip_fs=bool(params.get("skip_fs", True)),
-            run_story_fr=bool(params.get("run_story_fr", True)),
+            # run_story_fr False par defaut : gen_story_fr.py absent sur Railway
+            run_story_fr=bool(params.get("run_story_fr", False)),
         )
 
         result = Pipeline(opts).run(on_progress=_push)
