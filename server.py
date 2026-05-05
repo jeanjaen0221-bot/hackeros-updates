@@ -134,8 +134,7 @@ def _run_worldgen(job_id: str, params: Dict[str, Any]) -> None:
             tax_rate=float(params.get("tax_rate", 0.0)),
             save_dir=SAVE_DIR,
             skip_fs=bool(params.get("skip_fs", True)),
-            # run_story_fr False par defaut : gen_story_fr.py absent sur Railway
-            run_story_fr=bool(params.get("run_story_fr", False)),
+            run_story_fr=bool(params.get("run_story_fr", True)),
         )
 
         result = Pipeline(opts).run(on_progress=_push)

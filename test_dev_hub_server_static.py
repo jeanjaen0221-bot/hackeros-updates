@@ -177,6 +177,7 @@ WORLDGEN_FILES = [
     "core/worldgen/samples.py",
     "core/worldgen/market_seed.py",
     "core/worldgen/audit.py",
+    "dev_tools/gen_story_fr.py",
 ]
 
 
@@ -206,6 +207,18 @@ def test_worldgen_bundle_no_qt():
     print("  [OK] aucun import Qt dans les fichiers worldgen bundled")
 
 
+def test_gen_story_fr_bundled():
+    import py_compile
+    p = DEV_HUB_SERVER / "dev_tools" / "gen_story_fr.py"
+    assert p.exists(), "dev_tools/gen_story_fr.py absent"
+    py_compile.compile(str(p), doraise=True)
+    src = p.read_text(encoding="utf-8")
+    assert "PySide6" not in src and "PyQt" not in src, "Qt detecte dans gen_story_fr.py"
+    assert "story.json" in src, "story.json absent de gen_story_fr.py"
+    assert "BEATS" in src or "beats" in src, "structure beats absente"
+    print("  [OK] dev_tools/gen_story_fr.py bundled, stdlib-only, valide")
+
+
 def test_worldgen_importable():
     import importlib.util
     if str(DEV_HUB_SERVER) not in sys.path:
@@ -232,11 +245,11 @@ def test_sync_worldgen_script():
     print("  [OK] sync_worldgen.py present et valide")
 
 
-def test_server_run_story_fr_default_false():
+def test_server_run_story_fr_default_true():
     server_src = (DEV_HUB_SERVER / "server.py").read_text(encoding="utf-8")
-    assert 'run_story_fr", False)' in server_src, \
-        "run_story_fr doit etre False par defaut dans server.py"
-    print("  [OK] run_story_fr=False par defaut dans server.py")
+    assert 'run_story_fr", True)' in server_src, \
+        "run_story_fr doit etre True par defaut dans server.py (gen_story_fr.py bundled)"
+    print("  [OK] run_story_fr=True par defaut dans server.py")
 
 
 if __name__ == "__main__":
@@ -256,9 +269,10 @@ if __name__ == "__main__":
         test_requirements,
         test_worldgen_bundle_present,
         test_worldgen_bundle_no_qt,
+        test_gen_story_fr_bundled,
         test_worldgen_importable,
         test_sync_worldgen_script,
-        test_server_run_story_fr_default_false,
+        test_server_run_story_fr_default_true,
     ]
     print(f"\n=== Dev Hub Railway — {len(tests)} tests statiques ===\n")
     failures = []
