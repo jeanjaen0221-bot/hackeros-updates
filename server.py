@@ -107,17 +107,22 @@ def _zip_world_fs(save_dir: Path) -> Optional[str]:
     """Zippe save_dir/world_fs/ → save_dir/world_fs.zip. Retourne SHA256 ou None."""
     world_fs_dir = save_dir / "world_fs"
     if not world_fs_dir.exists():
+        print("[_zip_world_fs] world_fs/ absent — génération incomplète ou skip_fs=True")
+        return None
+    files = [f for f in world_fs_dir.rglob("*") if f.is_file()]
+    if not files:
+        print("[_zip_world_fs] world_fs/ vide — espace disque insuffisant lors de la génération")
         return None
     zip_path = save_dir / "world_fs.zip"
     try:
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED, allowZip64=True) as zf:
-            for file in sorted(world_fs_dir.rglob("*")):
-                if file.is_file():
-                    zf.write(file, file.relative_to(world_fs_dir))
+            for file in sorted(files):
+                zf.write(file, file.relative_to(world_fs_dir))
         sha = hashlib.sha256(zip_path.read_bytes()).hexdigest()
+        print(f"[_zip_world_fs] {len(files)} fichiers → world_fs.zip sha:{sha[:12]}…")
         return sha
     except Exception as exc:
-        print(f"[_zip_world_fs] erreur : {exc}")
+        print(f"[_zip_world_fs] erreur création ZIP (espace disque?) : {exc}")
         return None
 
 
@@ -140,6 +145,17 @@ def _run_worldgen(job_id: str, params: Dict[str, Any]) -> None:
                 "core/worldgen introuvable. "
                 "Lancez sync_worldgen.py ou definir HACKER_OS_PATH."
             )
+
+        # Nettoyage préventif pour libérer de l'espace sur le volume Railway
+        import shutil as _shutil
+        _old_wfs = SAVE_DIR / "world_fs"
+        _old_zip = SAVE_DIR / "world_fs.zip"
+        if _old_wfs.exists():
+            _push(0, "Nettoyage ancien world_fs/…")
+            _shutil.rmtree(str(_old_wfs), ignore_errors=True)
+        if _old_zip.exists():
+            _old_zip.unlink(missing_ok=True)
+
         from core.worldgen import Pipeline, PipelineOptions  # type: ignore
 
         opts = PipelineOptions(
