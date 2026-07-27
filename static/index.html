@@ -338,6 +338,31 @@ header .spacer{flex:1}
       <div class="card"><div class="val" id="stat-hosts" style="color:var(--purple)">—</div><div class="key">HÔTES</div></div>
     </div>
 
+    <!-- Monde déjà généré : chargé à l'ouverture, sans régénérer -->
+    <div class="status-row">
+      <span class="section-title" style="margin:0">◈ MONDE ACTUEL</span>
+      <button class="btn-sm" onclick="loadWorldSummary()">↺ Recharger</button>
+    </div>
+    <div class="sep"></div>
+    <div id="world-current" style="font-size:11px;color:var(--dim);">Chargement…</div>
+
+    <div id="world-explorer" style="display:none;">
+      <div class="sep"></div>
+      <div class="status-row">
+        <span class="section-title" style="margin:0">◈ CIBLES</span>
+        <span id="tgt-count" style="font-size:10px;color:var(--dim)"></span>
+      </div>
+      <div class="field" style="margin-top:6px;">
+        <input type="text" id="tgt-q" placeholder="rechercher une cible…"
+               oninput="debouncedTargets()" style="flex:1;">
+        <select id="tgt-kind" onchange="loadTargets()" style="max-width:130px;">
+          <option value="">tous types</option>
+        </select>
+      </div>
+      <div id="tgt-list" style="max-height:340px;overflow-y:auto;margin-top:6px;"></div>
+    </div>
+
+    <div class="sep"></div>
     <div class="section-title">◈ PROGRESSION</div>
     <div class="progress-wrap">
       <div class="progress-bar" id="prog-bar">0%</div>
@@ -448,6 +473,124 @@ async function loadWorldMeta() {
       [seed, hosts, sha ? `sha:${sha}…` : ''].filter(Boolean).join(' · ');
   } catch(_) {
     document.getElementById('world-status').textContent = 'Railway: erreur';
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Monde DÉJÀ généré — affiché à l'ouverture, sans régénération
+   Auparavant l'onglet n'était qu'un formulaire : impossible de savoir ce que
+   contenait le monde en place sans le refaire.
+══════════════════════════════════════════════════════════════════════════ */
+const _TYPE_COLORS = {
+  company: 'var(--orange)', government: 'var(--purple)', bank: 'var(--yellow)',
+  public_wifi: 'var(--green)', person: 'var(--cyan)',
+};
+
+function _fmtSize(bytes) {
+  if (!bytes) return '0';
+  if (bytes > 1048576) return (bytes / 1048576).toFixed(1) + ' Mo';
+  if (bytes > 1024) return (bytes / 1024).toFixed(0) + ' Ko';
+  return bytes + ' o';
+}
+
+async function loadWorldSummary() {
+  const box = document.getElementById('world-current');
+  box.textContent = 'Chargement…';
+  let r, d;
+  try {
+    r = await fetch('/api/world/summary');
+    d = await r.json();
+  } catch (e) {
+    box.innerHTML = '<span style="color:var(--red)">Serveur injoignable.</span>';
+    return;
+  }
+  if (!r.ok || !d.ok) {
+    document.getElementById('world-explorer').style.display = 'none';
+    box.innerHTML = '<span style="color:var(--yellow)">' + escHtml(d.error || 'Aucun monde généré.')
+      + '</span><br><span style="color:var(--dim)">Utilise le formulaire à gauche pour en créer un.</span>';
+    return;
+  }
+
+  const c = d.counts;
+  document.getElementById('stat-targets').textContent  = c.targets;
+  document.getElementById('stat-networks').textContent = c.networks;
+  document.getElementById('stat-hosts').textContent    = c.hosts;
+  if (c.missions !== undefined) document.getElementById('stat-missions').textContent = c.missions;
+
+  const types = Object.entries(d.targets_by_type || {}).map(([k, v]) =>
+    `<span class="badge" style="color:${_TYPE_COLORS[k] || 'var(--dim)'}">${escHtml(k)} ${v}</span>`
+  ).join(' ');
+
+  const missing = Object.entries(d.files || {}).filter(([, f]) => !f.present).map(([n]) => n);
+  const filesLine = missing.length
+    ? `<span style="color:var(--yellow)">manquant : ${escHtml(missing.join(', '))}</span>`
+    : `<span style="color:var(--green)">les ${Object.keys(d.files).length} fichiers sont servis au jeu</span>`;
+
+  box.innerHTML = `
+    <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:8px;">
+      <span>seed <b style="color:var(--yellow)">${escHtml(String(d.seed))}</b></span>
+      <span>difficulté <b>${escHtml(String(d.difficulty || '?'))}</b></span>
+      <span>schéma <b>${escHtml(String(d.schema || '?'))}</b></span>
+    </div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:8px;">
+      <span>${c.regions} région(s)</span><span>${c.districts} districts</span>
+      <span>${c.places} lieux</span><span>${c.services} services</span>
+      <span>${c.files.toLocaleString('fr')} fichiers</span><span>${c.relations} relations</span>
+    </div>
+    <div style="margin-bottom:8px;">${types}</div>
+    <div>${filesLine}</div>`;
+
+  const sel = document.getElementById('tgt-kind');
+  if (sel.options.length <= 1) {
+    Object.keys(d.targets_by_type || {}).forEach(k => {
+      const o = document.createElement('option'); o.value = k; o.textContent = k; sel.appendChild(o);
+    });
+  }
+  document.getElementById('world-explorer').style.display = '';
+  loadTargets();
+}
+
+let _tgtTimer = null;
+function debouncedTargets() {
+  clearTimeout(_tgtTimer);
+  _tgtTimer = setTimeout(loadTargets, 250);
+}
+
+async function loadTargets() {
+  const list = document.getElementById('tgt-list');
+  const q = document.getElementById('tgt-q').value.trim();
+  const kind = document.getElementById('tgt-kind').value;
+  list.innerHTML = '<span style="color:var(--dim);font-size:11px">Chargement…</span>';
+  try {
+    const r = await fetch(`/api/world/targets?limit=40&q=${encodeURIComponent(q)}&kind=${encodeURIComponent(kind)}`);
+    const d = await r.json();
+    if (!r.ok || !d.ok) { list.innerHTML = '<span style="color:var(--red)">' + escHtml(d.error || 'erreur') + '</span>'; return; }
+    document.getElementById('tgt-count').textContent =
+      `${d.targets.length} affichée(s) sur ${d.total}`;
+    if (!d.targets.length) {
+      list.innerHTML = '<span style="color:var(--dim);font-size:11px">Aucune cible ne correspond.</span>';
+      return;
+    }
+    list.innerHTML = d.targets.map(t => {
+      const col = _TYPE_COLORS[t.type] || 'var(--dim)';
+      const hosts = t.hosts.map(h => {
+        const svc = (h.services || []).map(s =>
+          `<span style="color:var(--dim)">${escHtml(s.name)}:${s.port}</span>`).join(' ');
+        const vulns = (h.services || []).reduce((n, s) => n + (s.vulns || []).length, 0);
+        return `<div style="padding-left:10px;color:var(--fg);">
+            <span style="color:var(--cyan)">${escHtml(h.hostname || h.host_id)}</span>
+            <span style="color:var(--dim)">${escHtml(h.ip)} · ${escHtml(h.os)} · ${h.files} fichiers</span>
+            ${vulns ? `<span style="color:var(--red)"> ${vulns} vuln</span>` : ''}
+            <div style="padding-left:10px;">${svc}</div></div>`;
+      }).join('');
+      return `<div style="border-bottom:1px solid var(--border);padding:6px 0;font-size:11px;">
+          <div><b style="color:${col}">${escHtml(t.name)}</b>
+            <span class="badge" style="color:${col}">${escHtml(t.type)}</span>
+            <span style="color:var(--dim)">${escHtml(t.district_id)}</span></div>
+          ${hosts}</div>`;
+    }).join('');
+  } catch (e) {
+    list.innerHTML = '<span style="color:var(--red)">Erreur réseau.</span>';
   }
 }
 
@@ -576,6 +719,7 @@ async function startGenerate() {
       _log(`  SHA monde    : ${(res.world_sha256||'').slice(0,16)}…`);
       _log(`  SHA missions : ${(res.missions_sha256||'').slice(0,16)}…`);
       loadWorldMeta();
+      loadWorldSummary();
       _allMissions = []; _allBeats = [];
     } else {
       _log('\n[ERREUR] ' + (d.error || '?'));
@@ -746,6 +890,9 @@ function escHtml(s) {
    Init
 ══════════════════════════════════════════════════════════════════════════ */
 loadWorldMeta();
+// Le monde déjà en place est chargé à l'ouverture : l'onglet MONDE n'est plus
+// un simple formulaire aveugle sur ce que contient le serveur.
+loadWorldSummary();
 </script>
 </body>
 </html>

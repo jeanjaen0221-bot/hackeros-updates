@@ -72,6 +72,8 @@ def test_server_routes():
         "/api/events/{job_id}",
         "/api/world/meta",
         "/api/world/file/{name:path}",
+        "/api/world/summary",
+        "/api/world/targets",
         "/api/story",
         "/api/missions",
     ]

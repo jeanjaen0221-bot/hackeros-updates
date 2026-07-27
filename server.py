@@ -74,9 +74,28 @@ STATIC_DIR: Path = _HERE / "static"
 
 SAVE_DIR.mkdir(parents=True, exist_ok=True)
 
+# ── Codec du monde ────────────────────────────────────────────────────────────
+# Importé depuis core.world_codec plutôt que recopié : les magies et le secret
+# ont déjà divergé par le passé entre le jeu et ce serveur, rendant les mondes
+# générés ici silencieusement illisibles par le jeu.
+try:
+    from core.world_codec import (  # type: ignore[import-not-found]
+        MISSIONS_MAGIC, WORLD_MAGIC, _SECRET, decode_dat,
+    )
+    _CODEC_OK = True
+except Exception as _codec_err:  # pragma: no cover - dépend du déploiement
+    print(f"[WARN] core.world_codec indisponible : {_codec_err}")
+    _CODEC_OK = False
+
+
 # ── Job state ─────────────────────────────────────────────────────────────────
 _jobs: Dict[str, Dict[str, Any]] = {}
 _executor = ThreadPoolExecutor(max_workers=2)
+
+# Cache de décodage : world.dat pèse ~9 Mo et son décodage coûte ~100 ms.
+# Sans cache, chaque consultation de l'interface le refait entièrement.
+# Clé = (chemin, mtime, taille) : toute régénération invalide naturellement.
+_decoded_cache: Dict[str, Any] = {}
 
 app = FastAPI(title="HackerOS Dev Hub", docs_url=None, redoc_url=None)
 
@@ -303,6 +322,210 @@ async def events(
     )
 
 
+def _decode_cached(path: Path, magic: bytes) -> Any:
+    """Décode un .dat en mémorisant le résultat tant que le fichier ne change pas."""
+    stat = path.stat()
+    stamp = (stat.st_mtime_ns, stat.st_size)
+    cached = _decoded_cache.get(str(path))
+    if cached is not None and cached[0] == stamp:
+        return cached[1]
+    _, data = decode_dat(path.read_bytes(), magic=magic, secret=_SECRET)
+    # Une entrée par fichier : world.dat et missions.dat coexistent, et une
+    # régénération remplace l'entrée périmée au lieu de s'accumuler.
+    _decoded_cache[str(path)] = (stamp, data)
+    return data
+
+
+def _world_overview(world: Dict[str, Any]) -> Dict[str, Any]:
+    """Résumé exploitable du monde chargé, pour l'interface du Dev Hub."""
+    targets = world.get("targets") or []
+    if isinstance(targets, dict):
+        targets = list(targets.values())
+    places = world.get("places") or []
+    districts = world.get("districts") or []
+    networks = world.get("networks") or []
+
+    by_type: Dict[str, int] = {}
+    hosts_total = 0
+    services_total = 0
+    files_total = 0
+    for target in targets:
+        if not isinstance(target, dict):
+            continue
+        by_type[str(target.get("type", "?"))] = by_type.get(str(target.get("type", "?")), 0) + 1
+        for host in (target.get("hosts") or []):
+            if not isinstance(host, dict):
+                continue
+            hosts_total += 1
+            services_total += len(host.get("services") or [])
+            os_model = host.get("os_model") or {}
+            index = os_model.get("files_index")
+            files_total += len(index) if isinstance(index, (list, dict)) else 0
+
+    district_rows = []
+    for district in districts:
+        if not isinstance(district, dict):
+            continue
+        did = str(district.get("district_id", ""))
+        district_rows.append({
+            "district_id": did,
+            "name": str(district.get("name", did)),
+            "kind": str(district.get("kind", "mixed")),
+            "places": sum(1 for p in places
+                          if isinstance(p, dict) and str(p.get("district_id", "")) == did),
+        })
+
+    return {
+        "seed": world.get("seed"),
+        "schema": world.get("schema"),
+        "difficulty": world.get("difficulty"),
+        "generated_at": world.get("generated_at"),
+        "counts": {
+            "regions": len(world.get("regions") or []),
+            "districts": len(districts),
+            "places": len(places),
+            "targets": len(targets),
+            "networks": len(networks),
+            "hosts": hosts_total,
+            "services": services_total,
+            "files": files_total,
+            "relations": len(world.get("relations") or []),
+        },
+        "targets_by_type": dict(sorted(by_type.items(), key=lambda kv: -kv[1])),
+        "districts": district_rows,
+    }
+
+
+@app.get("/api/world/summary")
+async def world_summary(
+    token: Optional[str] = Query(default=None),
+    dev_hub_token: Optional[str] = Cookie(default=None),
+) -> JSONResponse:
+    """Vue d'ensemble du monde DÉJÀ généré.
+
+    L'interface n'affichait jusqu'ici que le contenu de ``world.meta.json``
+    (seed + sha) : impossible de savoir ce que contenait réellement le monde
+    en place sans le régénérer.
+    """
+    _check_token(token, dev_hub_token)
+    if not _CODEC_OK:
+        return JSONResponse({"ok": False, "error": "Codec du monde indisponible."}, status_code=503)
+
+    world_path = SAVE_DIR / "world.dat"
+    if not world_path.exists():
+        return JSONResponse(
+            {"ok": False, "error": "Aucun monde généré sur ce serveur."}, status_code=404,
+        )
+    try:
+        world = _decode_cached(world_path, WORLD_MAGIC)
+    except Exception as exc:
+        return JSONResponse(
+            {"ok": False, "error": f"world.dat illisible : {exc}"}, status_code=500,
+        )
+
+    payload: Dict[str, Any] = {"ok": True, **_world_overview(world)}
+
+    # Les missions vivent dans un fichier distinct : sans elles le résumé serait
+    # incomplet, et l'interface afficherait un compteur vide en permanence.
+    missions_path = SAVE_DIR / "missions.dat"
+    if missions_path.exists():
+        try:
+            payload["counts"]["missions"] = len(
+                (_decode_cached(missions_path, MISSIONS_MAGIC) or {}).get("missions") or []
+            )
+        except Exception as exc:
+            payload["missions_error"] = str(exc)
+
+    meta_path = SAVE_DIR / "world.meta.json"
+    if meta_path.exists():
+        try:
+            payload["meta"] = json.loads(meta_path.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+
+    # État des fichiers distribués au jeu : c'est ce que le client téléchargera.
+    files = {}
+    for name in ("world.dat", "missions.dat", "market_seed.json",
+                 "world.meta.json", "missions.meta.json", "story/story.json", "world_fs.zip"):
+        fp = SAVE_DIR / name
+        files[name] = {"present": fp.exists(), "size": fp.stat().st_size if fp.exists() else 0}
+    payload["files"] = files
+    return JSONResponse(payload)
+
+
+@app.get("/api/world/targets")
+async def world_targets(
+    q: str = Query(default=""),
+    kind: str = Query(default=""),
+    limit: int = Query(default=60),
+    offset: int = Query(default=0),
+    token: Optional[str] = Query(default=None),
+    dev_hub_token: Optional[str] = Cookie(default=None),
+) -> JSONResponse:
+    """Parcourt les cibles du monde existant (recherche, filtre, pagination)."""
+    _check_token(token, dev_hub_token)
+    if not _CODEC_OK:
+        return JSONResponse({"ok": False, "error": "Codec du monde indisponible."}, status_code=503)
+
+    world_path = SAVE_DIR / "world.dat"
+    if not world_path.exists():
+        return JSONResponse({"ok": False, "error": "Aucun monde généré."}, status_code=404)
+    try:
+        world = _decode_cached(world_path, WORLD_MAGIC)
+    except Exception as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
+
+    targets = world.get("targets") or []
+    if isinstance(targets, dict):
+        targets = list(targets.values())
+
+    needle = q.strip().lower()
+    wanted_kind = kind.strip()
+    rows = []
+    for target in targets:
+        if not isinstance(target, dict):
+            continue
+        if wanted_kind and str(target.get("type", "")) != wanted_kind:
+            continue
+        name = str(target.get("name", ""))
+        tid = str(target.get("target_id", ""))
+        if needle and needle not in name.lower() and needle not in tid.lower():
+            continue
+        hosts = target.get("hosts") or []
+        rows.append({
+            "target_id": tid,
+            "name": name,
+            "type": str(target.get("type", "")),
+            "district_id": str(target.get("district_id", "")),
+            "place_id": str(target.get("place_id", "")),
+            "networks": [str(n.get("network_id", "")) for n in (target.get("networks") or [])
+                         if isinstance(n, dict)],
+            "hosts": [
+                {
+                    "host_id": str(h.get("host_id", "")),
+                    "hostname": str(h.get("hostname", "")),
+                    "ip": str(h.get("ip", "")),
+                    "os": str(h.get("os", "")),
+                    # Le champ du monde généré est "name" (et non "service").
+                    "services": [
+                        {"port": s.get("port"), "name": str(s.get("name", "")),
+                         "version": str(s.get("version", "")),
+                         "vulns": list(s.get("vuln_tags") or [])}
+                        for s in (h.get("services") or []) if isinstance(s, dict)
+                    ],
+                    "files": len(((h.get("os_model") or {}).get("files_index")) or []),
+                }
+                for h in hosts if isinstance(h, dict)
+            ],
+        })
+
+    total = len(rows)
+    start = max(0, int(offset))
+    end = start + max(1, min(500, int(limit)))
+    return JSONResponse({"ok": True, "total": total, "offset": start,
+                         "targets": rows[start:end]})
+
+
 @app.get("/api/world/meta")
 async def world_meta() -> JSONResponse:
     meta_path = SAVE_DIR / "world.meta.json"
@@ -351,12 +574,10 @@ async def missions_list(
     p = SAVE_DIR / "missions.dat"
     if not p.exists():
         return JSONResponse({"ok": False, "error": "missions.dat absent."}, status_code=404)
+    if not _CODEC_OK:
+        return JSONResponse({"ok": False, "error": "Codec du monde indisponible."}, status_code=503)
     try:
-        from core.world_codec import decode_dat  # type: ignore
-        MISSIONS_MAGIC = b"MISN"
-        _SECRET = b"hacker_os_world_secret_v1"
-        blob = p.read_bytes()
-        _, data = decode_dat(blob, magic=MISSIONS_MAGIC, secret=_SECRET)
+        data = _decode_cached(p, MISSIONS_MAGIC)
         missions = data.get("missions", [])
         return JSONResponse({"ok": True, "count": len(missions), "missions": missions})
     except Exception as exc:
