@@ -34,11 +34,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-
-WORLD_MAGIC = b"WRLD"
-MISSIONS_MAGIC = b"MISN"
-CODEC_VERSION = 1
-_SECRET = b"hacker_os_world_secret_v1"
+from core.world_codec import CODEC_VERSION, MISSIONS_MAGIC, WORLD_MAGIC, _SECRET
 
 
 # ── Data classes ──────────────────────────────────────────────────────────

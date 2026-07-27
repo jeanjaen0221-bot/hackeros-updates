@@ -7,6 +7,20 @@ import zlib
 from dataclasses import dataclass
 from typing import Any, Dict, Tuple
 
+# Single source of truth for the .dat container format shared by every module
+# that encodes/decodes world.dat, missions.dat and runtime_state.dat. These
+# were previously copy-pasted as literals into ~9 files (core/mission_engine.py,
+# core/runtime_state.py, core/world_state.py, core/worldgen/pipeline.py,
+# core/worldgen/_impl.py, dev_tools/dev_hub.py, dev_tools/test_story.py,
+# tools/audit_worldgen.py, dev_tools/world_editor_gui.py) — an accidental edit
+# to any one copy silently breaks decoding for that file (the same class of
+# bug that made hacker_os/ and dev_hub_server/ world_codec.py diverge; see
+# dev_hub_server/sync_worldgen.py and its drift-detection test).
+WORLD_MAGIC = b"WRLD"
+MISSIONS_MAGIC = b"MISN"
+CODEC_VERSION = 1
+_SECRET = b"hacker_os_world_secret_v1"
+
 
 @dataclass(frozen=True)
 class CodecHeader:
@@ -17,22 +31,20 @@ class CodecHeader:
 
 
 def _keystream(key: bytes, n: int) -> bytes:
-    out = bytearray()
-    counter = 0
-    while len(out) < n:
-        out.extend(hashlib.sha256(key + struct.pack("<I", counter)).digest())
-        counter += 1
-    return bytes(out[:n])
+    return hashlib.shake_256(key).digest(n)
 
 
 def _xor(data: bytes, key: bytes) -> bytes:
-    ks = _keystream(key, len(data))
-    return bytes([a ^ b for a, b in zip(data, ks)])
+    n = len(data)
+    ks = _keystream(key, n)
+    d_int = int.from_bytes(data, "little")
+    k_int = int.from_bytes(ks, "little")
+    return (d_int ^ k_int).to_bytes(n, "little")
 
 
 def encode_dat(magic: bytes, version: int, seed: int, obj: Dict[str, Any], secret: bytes) -> bytes:
     raw = json.dumps(obj, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
-    payload = zlib.compress(raw, level=9)
+    payload = zlib.compress(raw, level=6)
     sha = hashlib.sha256(payload).digest()
 
     key = hashlib.sha256(secret + struct.pack("<Q", int(seed))).digest()

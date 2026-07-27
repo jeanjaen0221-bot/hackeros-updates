@@ -16,11 +16,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-
-WORLD_MAGIC = b"WRLD"
-MISSIONS_MAGIC = b"MISN"
-CODEC_VERSION = 1
-_SECRET = b"hacker_os_world_secret_v1"
+from core.world_codec import CODEC_VERSION, MISSIONS_MAGIC, WORLD_MAGIC, _SECRET
 
 def _sha256_text(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8", errors="ignore")).hexdigest()

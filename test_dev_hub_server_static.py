@@ -71,7 +71,7 @@ def test_server_routes():
         "/api/generate",
         "/api/events/{job_id}",
         "/api/world/meta",
-        "/api/world/file/{name}",
+        "/api/world/file/{name:path}",
         "/api/story",
         "/api/missions",
     ]
@@ -198,6 +198,45 @@ def test_worldgen_bundle_present():
         if p.stat().st_size > 0:
             py_compile.compile(str(p), doraise=True)
     print(f"  [OK] {len(WORLDGEN_FILES)} fichiers worldgen bundled et compilables")
+
+
+def test_worldgen_bundle_matches_source():
+    """Detecte la derive silencieuse entre hacker_os/core/... (source de verite)
+    et les copies bundled dans dev_hub_server/ (utilisees sur Railway).
+
+    Si ce test echoue : lancer `python dev_hub_server/sync_worldgen.py` et
+    committer le resultat. Une derive ici a deja provoque un bug critique :
+    des mondes generes sur Railway devenus illisibles par le jeu car
+    world_codec.py divergeait (voir sync_worldgen.SYNC_MAP).
+    """
+    import hashlib
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "sync_worldgen", DEV_HUB_SERVER / "sync_worldgen.py"
+    )
+    assert spec is not None
+    mod = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(mod)
+
+    mismatched = []
+    for src_rel, dst_rel in mod.SYNC_MAP.items():
+        src = HACKER_OS / src_rel
+        dst = DEV_HUB_SERVER / dst_rel
+        if not src.exists() or not dst.exists():
+            mismatched.append(f"{src_rel} (fichier manquant)")
+            continue
+        src_hash = hashlib.sha256(src.read_bytes()).hexdigest()
+        dst_hash = hashlib.sha256(dst.read_bytes()).hexdigest()
+        if src_hash != dst_hash:
+            mismatched.append(src_rel)
+
+    assert not mismatched, (
+        f"{len(mismatched)} fichier(s) desynchronise(s) avec hacker_os/ : {mismatched}. "
+        f"Lancer `python dev_hub_server/sync_worldgen.py` puis committer."
+    )
+    print(f"  [OK] {len(mod.SYNC_MAP)} fichiers worldgen identiques a hacker_os/ (source de verite)")
 
 
 def test_worldgen_bundle_no_qt():
