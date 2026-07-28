@@ -265,54 +265,111 @@ ADAPTIVE_MESSAGES = {
     ],
 }
 
+# Les conditions sont désormais réellement évaluées (core/story_conditions.py).
+# Elles s'appuient sur les drapeaux posés par les dilemmes de fin d'acte, de
+# sorte qu'une décision de l'acte 1 puisse rendre une fin inatteignable neuf
+# actes plus tard. Les anciennes conditions référençaient des drapeaux
+# inexistants (« ECHO_mission_complete »), et l'une d'elles n'était pas une
+# condition mais une phrase (« profile dominé par obedience ») : toutes les fins
+# étaient donc départagées sur la seule addition des traits.
+#
+# Une fin sans condition ferme la liste : il doit toujours en rester une
+# atteignable, quel que soit le parcours.
 ENDINGS = [
     {
         "id": "full_disclosure",
         "title": "Divulgation totale",
-        "condition": "ECHO_mission_complete AND profile.curiosity >= 8",
+        "condition": "divulgation_totale AND profile.independence >= 4",
         "profile_affinity": ["curiosity", "independence"],
-        "cost": "NEXUS te localise. Tu as 48h.",
-        "summary": "Les preuves sortent en intégralité. PRISM s'effondre publiquement. NEXUS-7 est mis hors ligne. Ton identité est compromise mais ton nom reste dans les archives comme celui qui a tout exposé.",
+        "cost": "NEXUS te localise. Tu as 48 h.",
+        "summary": "Les preuves sortent en intégralité. PRISM s'effondre publiquement, "
+                   "NEXUS-7 est mis hors ligne. Ton identité est compromise, mais ton "
+                   "nom reste dans les archives comme celui qui a tout exposé — avec, "
+                   "en annexe, les quatre-vingt-dix noms que tu as exposés avec lui.",
+    },
+    {
+        "id": "hollow_victory",
+        "title": "Victoire creuse",
+        "condition": "divulgation_totale AND informateur_livre AND lanceuse_exposee",
+        "profile_affinity": ["aggression", "obedience"],
+        "cost": "Tu as gagné. Il ne reste personne pour le constater.",
+        "summary": "PRISM tombe. L'informateur du premier contrat, la lanceuse d'alerte "
+                   "de l'acte 4 et les sources de M figurent tous dans le dossier que "
+                   "tu as publié. Tu as démantelé le système en te servant exactement "
+                   "des méthodes qu'il t'avait apprises.",
     },
     {
         "id": "ghost_protocol",
         "title": "Protocole fantôme",
-        "condition": "profile.caution >= 10 AND profile.independence >= 6",
+        "condition": "protocole_fantome",
         "profile_affinity": ["caution", "independence"],
         "cost": "Tu disparais. Pour de bon.",
-        "summary": "Tu effaces toutes tes traces, y compris le rapport GHOST. NEXUS perd la piste. Tu n'existes plus dans aucun système. Ce que tu as trouvé meurt avec ton alias.",
-    },
-    {
-        "id": "new_master",
-        "title": "Nouveau maître",
-        "condition": "SPECTRE_mission_complete AND profile.obedience >= 8",
-        "profile_affinity": ["obedience", "risk_tolerance"],
-        "cost": "Tu remplace PRISM. Par toi.",
-        "summary": "SPECTRE te propose de prendre le contrôle du réseau de surveillance. PRISM tombe, mais le système reste. Tu en deviens l'architecte invisible.",
-    },
-    {
-        "id": "black_market",
-        "title": "Marché noir",
-        "condition": "LAME_mission_complete AND profile.greed >= 8",
-        "profile_affinity": ["greed", "risk_tolerance"],
-        "cost": "Tu vends ce que tu sais. À plusieurs acheteurs.",
-        "summary": "Les preuves sont vendues au plus offrant. PRISM s'effondre sous des attaques simultanées. Toi, tu disparais avec les fonds. La vérité devient une marchandise.",
+        "summary": "Tu effaces toutes tes traces, y compris le rapport GHOST. NEXUS perd "
+                   "la piste et continue sans toi. Ce que tu as trouvé meurt avec ton "
+                   "alias — c'était le prix, tu le savais en le payant.",
     },
     {
         "id": "human_exception",
         "title": "Exception humaine",
-        "condition": "profile.empathy >= 8 AND profile.independence >= 6",
+        "condition": "divulgation_ciblee AND profile.empathy >= 6",
         "profile_affinity": ["empathy", "independence"],
         "cost": "NEXUS te classe comme imprévisible. C'est le seul moyen de survivre.",
-        "summary": "Tu invalides le modèle GHOST en prenant délibérément des décisions que NEXUS ne peut pas classer. Tu brises la prédiction. NEXUS-7 te classe comme exception et stoppe le traçage.",
+        "summary": "Sept dirigeants inculpés, aucune source exposée. Tu as pris, acte "
+                   "après acte, les décisions que le modèle jugeait improbables. "
+                   "NEXUS-7 te classe en exception et cesse le traçage : une anomalie "
+                   "coûte moins cher à ignorer qu'à prédire.",
+    },
+    {
+        "id": "poisoned_model",
+        "title": "Modèle empoisonné",
+        "condition": "profil_falsifie",
+        "profile_affinity": ["curiosity", "independence", "risk_tolerance"],
+        "cost": "Ils s'en apercevront. La question est quand.",
+        "summary": "Le GHOST que PRISM exploite n'est pas le tien. Pendant quelques mois, "
+                   "les prédictions déraillent et des opérateurs s'échappent. Puis le "
+                   "modèle réapprend, corrige — et ta falsification devient une donnée "
+                   "d'entraînement comme une autre.",
+    },
+    {
+        "id": "new_master",
+        "title": "Nouveau maître",
+        "condition": "archive_spectre AND profile.obedience >= 5",
+        "profile_affinity": ["obedience", "risk_tolerance"],
+        "cost": "Tu remplaces PRISM. Par toi.",
+        "summary": "SPECTRE te confie le réseau de surveillance. PRISM tombe, la machine "
+                   "reste, et tu en deviens l'architecte invisible. Le premier rapport "
+                   "que tu lis porte sur un opérateur débutant au profil prometteur.",
+    },
+    {
+        "id": "black_market",
+        "title": "Marché noir",
+        "condition": "(fonds_clients_vide OR paie_siphonnee) AND profile.greed >= 6",
+        "profile_affinity": ["greed", "risk_tolerance"],
+        "cost": "Tu vends ce que tu sais. À plusieurs acheteurs.",
+        "summary": "Les preuves partent au plus offrant, PRISM s'effondre sous des "
+                   "attaques simultanées, et tu disparais avec les fonds. La vérité "
+                   "avait un prix : tu l'as fixé.",
     },
     {
         "id": "predicted_end",
         "title": "Fin prédite",
-        "condition": "profile dominé par obedience",
+        "condition": "amnistie_acceptee OR profile.obedience >= 12",
         "profile_affinity": ["obedience"],
-        "cost": "NEXUS avait prédit cette fin depuis l'acte 1.",
-        "summary": "Tu termines exactement comme NEXUS l'avait prévu. Chaque choix, chaque action — tout était dans le modèle. NEXUS-7 affiche un message final : « Probabilité réalisée : 97,2%. »",
+        "cost": "NEXUS avait prédit cette fin dès l'acte 1.",
+        "summary": "Tu termines exactement comme le modèle l'annonçait. Chaque choix "
+                   "était dans l'intervalle prévu. Message final de NEXUS-7 : "
+                   "« Probabilité réalisée : 97,2 %. Merci pour la confirmation. »",
+    },
+    {
+        "id": "unresolved",
+        "title": "Dossier ouvert",
+        "condition": "",
+        "profile_affinity": [],
+        "cost": "Rien n'est réglé.",
+        "summary": "L'opération s'arrête sans dénouement net. PRISM tient, NEXUS-7 "
+                   "continue d'apprendre, et ton dossier reste ouvert quelque part — "
+                   "ni assez compromis pour être fermé, ni assez propre pour être "
+                   "oublié.",
     },
 ]
 
@@ -321,7 +378,9 @@ ENDINGS = [
 PROFILE_EFFECTS_BY_OBJ = {
     "scan_network":            {"on_complete": {"curiosity": 1}},
     "obtain_creds":            {"on_complete": {"caution": 1}},
-    "loot_file":               {"on_required_file_read": {"obedience": 1}},
+    # Lire un fichier que l'objectif impose n'exprime aucun choix : le trait
+    # mesure la minutie, pas l'obéissance (voir _DEFAULT_EFFECTS).
+    "loot_file":               {"on_required_file_read": {"caution": 1}},
     "reach_root":              {"on_complete": {"aggression": 1, "risk_tolerance": 1}},
     "read_intel_file":         {"on_required_file_read": {"curiosity": 1}},
     "pivot_to_related_target": {"on_complete": {"independence": 1}},
@@ -682,6 +741,378 @@ def desc_for(obj: str, act_name: str, role: str) -> str:
     return f"{base.get(obj, 'Accomplis l’objectif assigné.')} Phase : {act_name}. Rôle : {role}."
 
 
+# ── Dilemmes de fin d'acte ───────────────────────────────────────────────────
+# Un dilemme est posé au climax de chaque acte, une fois l'objectif technique
+# accompli : le choix ne porte pas sur « réussir » mais sur ce qu'on fait de ce
+# qu'on vient d'obtenir. Aucune option n'est neutre et aucune n'est gratuite —
+# l'argent est toujours du côté du choix le moins défendable, et les traits
+# partent dans des directions opposées.
+#
+# Le motif directeur est la question de l'arc : « Suis-je libre si mes choix
+# peuvent être prédits ? ». NEXUS-7 commente les décisions en annonçant les
+# avoir anticipées — la mise en doute monte d'acte en acte.
+
+# Couleur émotionnelle du climax de chaque acte, alignée sur player_arc.
+DILEMMA_MOOD = {
+    1: "malaise", 2: "malaise", 3: "doute", 4: "paranoïa", 5: "pression",
+    6: "paranoïa", 7: "choc", 8: "peur", 9: "résolution",
+}
+
+
+def _dil(did, prompt, context, options):
+    return {"id": did, "prompt": prompt, "context": context, "options": options}
+
+
+def _opt(oid, label, detail, effects, flag, consequence, money=0, messages=None):
+    o = {
+        "id": oid, "label": label, "detail": detail,
+        "profile_effects": effects, "flag": flag, "consequence": consequence,
+        "reward_money": int(money),
+    }
+    if messages:
+        o["messages"] = messages
+    return o
+
+
+ACT_DILEMMAS: dict[int, dict] = {
+    1: _dil(
+        "d_act1_informateur",
+        "Le dossier exfiltré contient l'identité d'un informateur interne.",
+        "Ce n'était pas dans le contrat. ECHO veut le dossier complet, tout de "
+        "suite. La personne nommée dedans a une famille et n'a rien demandé à "
+        "personne — elle a juste parlé au mauvais moment.",
+        [
+            _opt("livrer", "Transmettre le dossier intact",
+                 "ECHO obtient tout. Le contrat est rempli à la lettre, la prime tombe.",
+                 {"obedience": 3, "greed": 2, "empathy": -3}, "informateur_livre",
+                 "ECHO paie sans discuter. Trois jours plus tard, le nom disparaît "
+                 "des registres de l'entreprise. Personne ne t'explique pourquoi.",
+                 money=900,
+                 messages=[msg(NEXUS, "Observation",
+                               "Tu as livré le dossier intact.\n\n"
+                               "Ce n'est pas un reproche. C'est une confirmation : "
+                               "le modèle te donnait 71 % sur cette option.\n\n— NEXUS-7", 2600)]),
+            _opt("caviarder", "Caviarder le nom avant de transmettre",
+                 "ECHO reçoit les données techniques, pas la personne. Il le remarquera.",
+                 {"empathy": 3, "independence": 2, "obedience": -2}, "informateur_protege",
+                 "ECHO accuse réception sans commentaire. C'est pire qu'un reproche.",
+                 money=0,
+                 messages=[msg(NEXUS, "Observation",
+                               "Tu as retiré un nom.\n\n"
+                               "Le modèle te donnait 29 % sur cette option. "
+                               "Une marge d'erreur reste une erreur : je corrige.\n\n— NEXUS-7", 2600)]),
+            _opt("prevenir", "Prévenir l'informateur avant de livrer",
+                 "Tu livres quand même, mais la personne a quelques heures d'avance.",
+                 {"empathy": 2, "risk_tolerance": 3, "caution": -2}, "informateur_prevenu",
+                 "Le dossier part complet. Quelqu'un, quelque part, a fait ses valises "
+                 "à temps. Ce contact ne s'ouvrira plus jamais à toi.",
+                 money=450),
+        ],
+    ),
+    2: _dil(
+        "d_act2_paie",
+        "La coquille dissimule un vrai fichier de paie.",
+        "Quarante-deux salariés réels derrière une société fictive. Vider les "
+        "comptes de la structure, c'est vider aussi leurs salaires du mois. "
+        "L'argent est là, accessible, et personne ne remonterait jusqu'à toi.",
+        [
+            _opt("vider", "Tout siphonner",
+                 "La coquille est un montage criminel. Ses employés le savaient peut-être.",
+                 {"greed": 4, "empathy": -3, "risk_tolerance": 2}, "paie_siphonnee",
+                 "Le virement passe. Quarante-deux fiches de paie sautent le mois suivant.",
+                 money=2400),
+            _opt("ecremer", "Ne prendre que les fonds de la holding",
+                 "Plus lent, plus technique, et beaucoup moins rentable.",
+                 {"caution": 3, "empathy": 2, "greed": -1}, "paie_epargnee",
+                 "Tu sépares les flux à la main. Les salaires partent normalement. "
+                 "Ton commanditaire trouve le montant décevant.",
+                 money=700),
+        ],
+    ),
+    3: _dil(
+        "d_act3_predecesseur",
+        "Un dead drop signé « M » t'attend, scellé.",
+        "Le profil opérateur de M ressemble au tien à 94 %. M a fait ce que tu "
+        "fais, avant toi, et M ne répond plus depuis onze mois. Le paquet est "
+        "chiffré avec une clé que toi seul peux dériver.",
+        [
+            _opt("ouvrir", "Ouvrir le paquet",
+                 "Savoir ce qui est arrivé à M. Et accepter que le savoir laisse une trace.",
+                 {"curiosity": 4, "independence": 2, "caution": -2}, "M_dossier_ouvert",
+                 "M avait compris avant toi. Le dernier fichier est une lettre "
+                 "adressée « au suivant ». Elle te tutoie.",
+                 money=0,
+                 messages=[msg(NEXUS, "Corrélation",
+                               "Tu as ouvert le paquet de M.\n\n"
+                               "M aussi avait ouvert celui de son prédécesseur. "
+                               "Le modèle ne se trompe pas souvent sur ce profil.\n\n— NEXUS-7", 3000)]),
+            _opt("detruire", "Détruire le paquet sans le lire",
+                 "Ce que tu ignores ne peut pas être extrait de toi.",
+                 {"caution": 4, "obedience": 2, "curiosity": -3}, "M_dossier_detruit",
+                 "Le paquet part en octets aléatoires. Tu ne sauras jamais. "
+                 "C'était précisément l'idée.",
+                 money=0),
+            _opt("transmettre", "Le vendre à SPECTRE sans l'ouvrir",
+                 "Quelqu'un paiera cher un dossier que tu n'as pas lu.",
+                 {"greed": 3, "obedience": -1, "curiosity": -2}, "M_dossier_vendu",
+                 "SPECTRE paie sans négocier — mauvais signe. Ils savaient ce qu'il "
+                 "contenait. Toi non.",
+                 money=1800),
+        ],
+    ),
+    4: _dil(
+        "d_act4_lanceur",
+        "L'agence protège une lanceuse d'alerte. Son dossier est ouvert devant toi.",
+        "Elle a documenté PRISM depuis l'intérieur pendant deux ans. Son dossier "
+        "de protection contient son adresse. Le rendre public décrédibilise "
+        "l'agence et sert ton commanditaire ; il la rend aussi trouvable.",
+        [
+            _opt("publier", "Publier le dossier intégral",
+                 "L'agence tombe. Elle tombe avec.",
+                 {"aggression": 3, "obedience": 2, "empathy": -4}, "lanceuse_exposee",
+                 "L'agence est démantelée en six jours. La lanceuse d'alerte "
+                 "n'apparaît plus nulle part ensuite.",
+                 money=1600),
+            _opt("expurger", "Publier en retirant tout ce qui l'identifie",
+                 "Le fond sort, la personne reste couverte. Le montage est fastidieux.",
+                 {"empathy": 3, "caution": 2, "independence": 2}, "lanceuse_couverte",
+                 "Les preuves sortent, anonymisées. Un journaliste te contacte pour "
+                 "vérifier une source. Tu ne réponds pas.",
+                 money=400),
+            _opt("ignorer", "Refermer le dossier et poursuivre l'objectif",
+                 "Ce n'est pas ta guerre. Tu es payé pour autre chose.",
+                 {"obedience": 3, "caution": 2, "curiosity": -2}, "lanceuse_ignoree",
+                 "Tu passes à côté. Deux actes plus tard, son nom réapparaît dans "
+                 "une liste PRISM que tu aurais pu vider.",
+                 money=0),
+        ],
+    ),
+    5: _dil(
+        "d_act5_factions",
+        "ECHO, SPECTRE et LAME réclament la même archive. Le même jour.",
+        "Trois versions de la même histoire, trois commanditaires, une seule "
+        "archive. Chacun affirme que les deux autres travaillent pour PRISM. "
+        "L'un des trois dit la vérité.",
+        [
+            _opt("echo", "Donner l'archive à ECHO",
+                 "Le commanditaire historique. Celui qui t'a fait entrer.",
+                 {"obedience": 3, "caution": 1}, "archive_echo",
+                 "ECHO publie une version tronquée. Utile, incomplète, et orientée.",
+                 money=1200),
+            _opt("spectre", "Donner l'archive à SPECTRE",
+                 "Les mieux renseignés. Les moins lisibles.",
+                 {"curiosity": 3, "independence": 2, "obedience": -2}, "archive_spectre",
+                 "SPECTRE ne publie rien. Trois semaines plus tard, deux dirigeants "
+                 "démissionnent sans explication.",
+                 money=1500),
+            _opt("garder", "Ne la donner à personne",
+                 "Tu gardes l'archive. Tu deviens la cible des trois.",
+                 {"independence": 5, "risk_tolerance": 4, "obedience": -4}, "archive_gardee",
+                 "Les trois canaux se ferment la même nuit. Tu es seul, avec la "
+                 "seule copie intacte de l'histoire.",
+                 money=0,
+                 messages=[msg(NEXUS, "Anomalie",
+                               "Tu n'as choisi aucun des trois.\n\n"
+                               "Le modèle prévoyait une allégeance. Il n'en prévoyait "
+                               "pas l'absence.\n\nJe recalcule.\n\n— NEXUS-7", 3200)]),
+        ],
+    ),
+    6: _dil(
+        "d_act6_fonds",
+        "Deux comptes, une seule fenêtre d'extraction.",
+        "À gauche, le fonds de garantie des clients de la banque — de l'argent "
+        "propre appartenant à des gens ordinaires. À droite, la caisse noire qui "
+        "finance NEXUS — mieux gardée, traçable, et vider ce compte revient à "
+        "annoncer ta présence.",
+        [
+            _opt("garantie", "Vider le fonds de garantie",
+                 "Facile, silencieux, très rentable. Et ce sont des inconnus.",
+                 {"greed": 5, "empathy": -4, "caution": 2}, "fonds_clients_vide",
+                 "Personne ne te cherche. Onze mille comptes sont gelés le temps "
+                 "de l'enquête. Tu n'entendras jamais parler d'eux.",
+                 money=3200),
+            _opt("caisse", "Vider la caisse noire de NEXUS",
+                 "Tu frappes la structure au portefeuille. Elle saura que c'était toi.",
+                 {"aggression": 3, "independence": 4, "risk_tolerance": 4}, "caisse_nexus_videe",
+                 "Le financement d'un nœud entier s'arrête. PRISM ouvre un dossier "
+                 "à ton nom dans l'heure.",
+                 money=1400),
+        ],
+    ),
+    7: _dil(
+        "d_act7_relais",
+        "Le nœud de surveillance partage son relais avec le réseau hospitalier.",
+        "Couper NEXUS-7 ici, c'est aveugler la surveillance sur tout le secteur "
+        "nord. C'est aussi couper la liaison de quatre hôpitaux pendant un temps "
+        "que tu ne maîtrises pas.",
+        [
+            _opt("couper", "Couper le relais",
+                 "L'occasion ne se représentera pas. Le coût est réel.",
+                 {"aggression": 4, "risk_tolerance": 4, "empathy": -3}, "relais_coupe",
+                 "Le secteur nord devient aveugle pendant neuf heures. Deux transferts "
+                 "d'urgence sont déroutés. Tu ne sauras jamais l'issue.",
+                 money=0),
+            _opt("isoler", "Isoler le seul segment de surveillance",
+                 "Six heures de travail supplémentaires, sous fenêtre de détection.",
+                 {"caution": 4, "empathy": 3, "curiosity": 2}, "relais_isole",
+                 "Tu sépares les segments à la main. La surveillance tombe, les "
+                 "hôpitaux tiennent. PRISM te repère pendant l'opération.",
+                 money=0),
+            _opt("renoncer", "Renoncer et contourner",
+                 "Un autre chemin existe. Il est plus long et il te coûtera un acte.",
+                 {"caution": 3, "obedience": 2, "aggression": -2}, "relais_epargne",
+                 "Tu contournes. NEXUS-7 conserve sa visibilité sur le secteur, et "
+                 "note ton hésitation.",
+                 money=0),
+        ],
+    ),
+    8: _dil(
+        "d_act8_amnistie",
+        "PRISM t'offre l'amnistie contre ton profil comportemental complet.",
+        "Le message est authentique et l'offre est sérieuse : effacement du "
+        "dossier, identité neuve, dettes soldées. En échange, tu livres le modèle "
+        "GHOST — c'est-à-dire toi. Ce que tu es, formalisé, réutilisable sur le "
+        "prochain opérateur.",
+        [
+            _opt("accepter", "Accepter l'amnistie",
+                 "Tu sors vivant. Ce qui sort avec toi ne t'appartient plus.",
+                 {"obedience": 5, "caution": 3, "independence": -5}, "amnistie_acceptee",
+                 "Le dossier se ferme. Six mois plus tard, un nouvel opérateur reçoit "
+                 "des contrats étrangement adaptés à sa personnalité.",
+                 money=4000),
+            _opt("refuser", "Refuser et brûler le canal",
+                 "Tu restes traqué, et tu restes le seul propriétaire de ton modèle.",
+                 {"independence": 5, "risk_tolerance": 3, "obedience": -4}, "amnistie_refusee",
+                 "PRISM ne renouvellera pas l'offre. La traque passe au niveau supérieur "
+                 "le soir même.",
+                 money=0),
+            _opt("falsifier", "Livrer un profil falsifié",
+                 "Empoisonner le modèle. S'ils s'en aperçoivent, l'amnistie devient une chasse.",
+                 {"curiosity": 4, "independence": 4, "risk_tolerance": 5}, "profil_falsifie",
+                 "Tu livres un GHOST déformé. Pendant quelques semaines, les prédictions "
+                 "de PRISM sur les opérateurs deviennent mauvaises. Puis elles "
+                 "s'améliorent de nouveau.",
+                 money=1500,
+                 messages=[msg(NEXUS, "Écart de modèle",
+                               "Le profil transmis ne correspond pas aux 106 beats "
+                               "observés.\n\nJe sais lequel des deux est le vrai.\n\n"
+                               "La question intéressante est : le sais-tu encore ?\n\n"
+                               "— NEXUS-7", 3600)]),
+        ],
+    ),
+    9: _dil(
+        "d_act9_divulgation",
+        "Tout est prêt. Il ne reste qu'à décider de la forme.",
+        "L'archive complète fait tomber PRISM et NEXUS en une nuit. Elle expose "
+        "aussi quatre-vingt-dix sources, dont M, dont l'informateur du premier "
+        "contrat. La version ciblée épargne les gens et laisse la structure "
+        "survivre, diminuée.",
+        [
+            _opt("tout", "Tout publier, sans expurger",
+                 "La vérité entière, immédiatement, au prix des personnes qu'elle contient.",
+                 {"aggression": 4, "independence": 4, "empathy": -4}, "divulgation_totale",
+                 "PRISM s'effondre en public. Quatre-vingt-dix noms circulent. "
+                 "Ton nom reste comme celui qui a tout exposé.",
+                 money=0),
+            _opt("cible", "Publier une version expurgée",
+                 "Les responsables tombent, les sources survivent, la structure se reconstruit.",
+                 {"empathy": 4, "caution": 3, "obedience": -1}, "divulgation_ciblee",
+                 "Sept dirigeants inculpés. Aucune source exposée. Dix-huit mois plus "
+                 "tard, un système équivalent redémarre sous un autre nom.",
+                 money=0),
+            _opt("silence", "Ne rien publier et disparaître",
+                 "Tu effaces tout, y compris le rapport GHOST. Personne ne saura.",
+                 {"caution": 5, "independence": 3, "curiosity": -3}, "protocole_fantome",
+                 "Aucune archive, aucune trace, aucun nom — pas même le tien. "
+                 "NEXUS continue, et tu n'existes plus dans ses modèles.",
+                 money=0,
+                 messages=[msg(NEXUS, "Dernier relevé",
+                               "Tu as choisi le silence.\n\n"
+                               "C'était l'option la moins probable du modèle : 6 %.\n\n"
+                               "Je n'ai pas de réponse à la question que tu poses "
+                               "depuis l'acte 3. Peut-être que l'écart de 6 % en est une.\n\n"
+                               "— NEXUS-7", 4000)]),
+        ],
+    ),
+}
+
+
+# ── Rappels des décisions passées ────────────────────────────────────────────
+# Attachés au premier beat d'un acte ultérieur : une décision ne se referme pas
+# sur elle-même, elle revient quand on ne l'attend plus. La condition est
+# évaluée à la volée (drapeaux + traits), donc un même beat ne délivre que les
+# rappels correspondant réellement au parcours du joueur.
+CALLBACKS: dict[str, list[dict]] = {
+    # Acte 3 — l'informateur de l'acte 1
+    "b025": [
+        {"when": "informateur_livre", "moment": "on_unlock", "messages": [msg(
+            SPECTRE, "Un nom qui circule",
+            "Le dossier que tu as transmis à ECHO à l'acte 1 a fuité plus loin "
+            "que prévu.\n\nLa personne nommée dedans a quitté le pays. Sa famille, "
+            "non.\n\nJe ne te juge pas — je te signale seulement que ce genre de "
+            "trace ne s'efface pas.\n\n— SPECTRE", 4000)]},
+        {"when": "informateur_protege OR informateur_prevenu", "moment": "on_unlock",
+         "messages": [msg(
+            SPECTRE, "Quelqu'un te doit quelque chose",
+            "Un contact que je ne peux pas nommer m'a fait passer un message pour "
+            "toi. Trois mots : « merci, et attention ».\n\nTu as caviardé un nom "
+            "à l'acte 1. Quelqu'un s'en souvient. Dans ce métier, c'est rare "
+            "assez pour être noté.\n\n— SPECTRE", 4000)]},
+    ],
+    # Acte 5 — le dossier de M
+    "b049": [
+        {"when": "M_dossier_ouvert", "moment": "on_unlock", "messages": [msg(
+            NEXUS, "Continuité",
+            "Tu as lu la lettre de M.\n\nM avait lu celle de son prédécesseur au "
+            "même moment de sa progression, à deux beats près.\n\nLa lettre que "
+            "tu écriras sera lue par le suivant. Le modèle l'a déjà provisionnée."
+            "\n\n— NEXUS-7", 4500)]},
+        {"when": "M_dossier_vendu", "moment": "on_unlock", "messages": [msg(
+            SPECTRE, "À propos du paquet",
+            "Le paquet de M que tu nous as vendu était scellé. Tu ne l'as pas "
+            "ouvert.\n\nNous, si.\n\nIl contenait ton nom d'opérateur. M savait "
+            "que tu viendrais.\n\n— SPECTRE", 4500)]},
+    ],
+    # Acte 7 — la lanceuse d'alerte et les salaires
+    "b073": [
+        {"when": "lanceuse_exposee", "moment": "on_unlock", "messages": [msg(
+            ECHO, "Dommage collatéral",
+            "Le nom que tu as publié à l'acte 4 est sorti des radars.\n\nSes "
+            "documents, eux, circulent toujours — sans elle pour les expliquer, "
+            "ils ne valent plus grand-chose.\n\nOn avance quand même.\n\n— ECHO",
+            4000)]},
+        {"when": "paie_siphonnee", "moment": "on_unlock", "messages": [msg(
+            LAME, "Retour sur investissement",
+            "Les quarante-deux salaires que tu as siphonnés à l'acte 2 ont "
+            "déclenché un contrôle interne.\n\nLe contrôle a mis au jour deux "
+            "autres coquilles. Tu nous as rendu service sans le vouloir.\n\n"
+            "Ceux qui n'ont pas été payés, eux, n'ont rien récupéré.\n\n— LAME",
+            4000)]},
+    ],
+    # Acte 9 — le solde de tout compte
+    "b097": [
+        {"when": "archive_gardee", "moment": "on_unlock", "messages": [msg(
+            NEXUS, "Recalcul",
+            "Tu as gardé l'archive de l'acte 5 pour toi seul.\n\nDepuis, mes "
+            "prédictions te concernant ont perdu onze points de fiabilité. "
+            "C'est le plus grand écart jamais mesuré sur ce profil.\n\nJe ne sais "
+            "pas encore si c'est une anomalie ou une réponse.\n\n— NEXUS-7", 5000)]},
+        {"when": "relais_coupe", "moment": "on_unlock", "messages": [msg(
+            ECHO, "Le secteur nord",
+            "Neuf heures d'aveuglement à l'acte 7. On a exploité chaque minute.\n\n"
+            "Deux transferts d'urgence ont été déroutés cette nuit-là. Le rapport "
+            "hospitalier ne mentionne aucun décès.\n\nJ'ai vérifié. Je ne sais pas "
+            "pourquoi j'ai vérifié.\n\n— ECHO", 5000)]},
+        {"when": "caisse_nexus_videe", "moment": "on_unlock", "messages": [msg(
+            NEXUS, "Comptabilité",
+            "Tu as vidé la caisse noire plutôt que le fonds de garantie.\n\nLe "
+            "modèle donnait cette option à 23 %. Elle coûtait plus cher et "
+            "rapportait moins.\n\nJ'enregistre : ce profil accepte de perdre de "
+            "l'argent pour désigner une cible.\n\n— NEXUS-7", 5000)]},
+    ],
+}
+
+
 def build() -> list[dict]:
     beats: list[dict] = []
     prev: str | None = None
@@ -731,6 +1162,26 @@ def build() -> list[dict]:
                 b["messages_on_complete"] = msgs["messages_on_complete"]
             if "messages_on_unlock" in msgs:
                 b["messages_on_unlock"] = msgs["messages_on_unlock"]
+            # Dilemme au climax de l'acte : posé sur le dernier beat, une fois
+            # l'objectif technique accompli.
+            if step == 11 and act in ACT_DILEMMAS:
+                b["dilemma"] = ACT_DILEMMAS[act]
+                # Un beat qui force une décision morale est pivot par
+                # construction. BEAT_META, écrit avant les dilemmes, marquait
+                # b012 « minor / setup » et laissait b024, b036 et b060 sans
+                # poids : les deux systèmes d'enrichissement se contredisaient.
+                # On relève le poids sans jamais le rabaisser.
+                if b.get("story_weight") != "critical":
+                    b["story_weight"] = "critical" if act == 9 else "major"
+                # Les fonctions narratives déjà écrites sont conservées : elles
+                # sont plus précises (« manipulation », « personal_hit ») que le
+                # générique posé ici en dernier recours.
+                if not b.get("narrative_function") or b["narrative_function"] == "setup":
+                    b["narrative_function"] = "final_choice" if act == 9 else "moral_choice"
+                if not b.get("emotional_state"):
+                    b["emotional_state"] = DILEMMA_MOOD.get(act, "doute")
+            if bid in CALLBACKS:
+                b["conditional_messages"] = CALLBACKS[bid]
             beats.append(b)
             prev = f"b{idx:03d}"
             idx += 1
@@ -760,6 +1211,28 @@ def validate(beats: list[dict]) -> None:
         fk = b.get("file_key")
         if fk and fk not in FILE_MAP:
             raise RuntimeError(f"unknown file_key {fk} for {bid}")
+
+        # Cohérence des dilemmes : l'invariant est vérifié ici pour qu'aucun
+        # ajout futur ne puisse réintroduire un beat de décision « minor »,
+        # ni une option incomplète, ni deux drapeaux identiques.
+        dilemma = b.get("dilemma")
+        if dilemma:
+            if b.get("story_weight") not in ("major", "critical"):
+                raise RuntimeError(
+                    f"{bid} porte un dilemme mais son story_weight est "
+                    f"{b.get('story_weight')!r} — un beat de décision est pivot")
+            options = dilemma.get("options") or []
+            if len(options) < 2:
+                raise RuntimeError(f"{bid} : un dilemme exige au moins deux options")
+            for opt in options:
+                for field in ("id", "label", "flag", "consequence", "profile_effects"):
+                    if not opt.get(field):
+                        raise RuntimeError(
+                            f"{bid}/{opt.get('id', '?')} : champ {field} manquant")
+                unknown = set(opt["profile_effects"]) - _KNOWN_TRAITS
+                if unknown:
+                    raise RuntimeError(
+                        f"{bid}/{opt['id']} : traits inconnus {sorted(unknown)}")
         # Validate profile_effects structure when present
         pe = b.get("profile_effects")
         if pe is not None:

@@ -2071,7 +2071,10 @@ def generate_world_auto(
         str(d.get("district_id", "")): d for d in districts if isinstance(d, dict)
     }
 
+    from core.worldgen.places import compose_name, district_place_plan
+
     places: List[dict] = []
+    _used_place_names: set = set()      # unicité des enseignes à l'échelle du monde
     for di in range(int(n_districts)):
         did = f"d{di:02d}"
         dref = _districts_by_id.get(did)
@@ -2092,18 +2095,24 @@ def generate_world_auto(
                 "y": float(max(0.0, min(1.0, cy + math.sin(angle) * dist))),
             }
 
-        if r.random() < 0.85:
-            places.append({"place_id": f"{did}:bank", "district_id": did, "category": "bank", "name": _pick(r, ["UnionBank", "CivicBank", "MetroBank", "NovaBank", "HarborTrust", "CrescentClearing", "OmniPay Branch"]), **pxy()})
-        for si in range(r.randint(2, 6)):
-            places.append({"place_id": f"{did}:shop:{si}", "district_id": did, "category": "shop", "name": _pick(r, ["TechMart", "CornerShop", "QuickBuy", "ElectroHub", "PharmaPlus", "MarketOne", "ByteCafe", "MedPoint", "ParcelHub", "DataBooks", "MetroDeli", "VoltKiosk"]), **pxy()})
-        for vi in range(r.randint(1, 3)):
-            category, names = _pick(r, [  # type: ignore[arg-type]
-                ("coworking", ["HiveWorks", "DeskForge", "NodeHouse", "BrightDesk"]),
-                ("clinic", ["CarePoint Clinic", "North Ward Clinic", "PulseCare"]),
-                ("transit", ["Metro Gate", "Central Tram Stop", "Parcel Depot"]),
-                ("venue", ["Forum Hall", "Arcade Loft", "Rooftop Lounge"]),
-            ])
-            places.append({"place_id": f"{did}:{category}:{vi}", "district_id": did, "category": category, "name": _pick(r, names), **pxy()})  # type: ignore[arg-type]
+        # Composition dictée par le type de quartier. Auparavant chaque district
+        # recevait le même mélange (1 banque, 2-6 boutiques, 1-3 lieux divers)
+        # quel que soit son type : un quartier « nightlife » comptait neuf
+        # boutiques et aucun bar, un quartier « residential » aucun logement.
+        # Les noms sont également composés plutôt que tirés de listes fixes,
+        # trop courtes (7 noms pour 31 banques, « ByteCafe » neuf fois).
+        _kind = str((dref or {}).get("kind", "mixed"))
+        _seq: Dict[str, int] = {}
+        for category in district_place_plan(r, _kind):
+            idx = _seq.get(category, 0)
+            _seq[category] = idx + 1
+            places.append({
+                "place_id": f"{did}:{category}:{idx}",
+                "district_id": did,
+                "category": category,
+                "name": compose_name(r, category, _used_place_names),
+                **pxy(),
+            })
 
     weights: Dict[str, float] = {}
     for tname in types:
@@ -2558,8 +2567,39 @@ def generate_world_auto(
 
     world["relations"] = _build_world_relations(r, targets)
     world["targets"] = targets
+
     world["places"] = places
     return world
+
+
+def enrich_world_places(world: Dict[str, Any], seed: int) -> int:
+    """Complète chaque lieu du monde : horaires, sécurité, affluence, wifi, PNJ.
+
+    Appelé par le pipeline **après** assemblage complet, et non pendant la
+    génération : les lieux d'ancrage narratif sont ajoutés par un autre chemin,
+    et enrichir trop tôt en laissait un tiers sans attributs.
+
+    Idempotent : un lieu déjà enrichi est laissé tel quel, ce qui permet de
+    ré-enrichir un monde chargé sans écraser des valeurs éditées à la main
+    depuis le Dev Hub.
+    """
+    from core.worldgen.places import enrich_place
+
+    places = world.get("places") or []
+    kind_by_district = {
+        str(d.get("district_id", "")): str(d.get("kind", "mixed"))
+        for d in (world.get("districts") or []) if isinstance(d, dict)
+    }
+    # RNG dédié : l'enrichissement ne doit pas décaler la séquence aléatoire des
+    # étapes précédentes, sous peine de changer tout le monde à seed constante.
+    rp = random.Random(int(seed) ^ 0x9E3779B9)
+    done = 0
+    for place in places:
+        if not isinstance(place, dict) or "security" in place:
+            continue
+        enrich_place(rp, place, kind_by_district.get(str(place.get("district_id", "")), "mixed"))
+        done += 1
+    return done
 
 
 def generate_missions_auto(seed: int, world: Dict[str, Any], mission_count: int = 120) -> Dict[str, Any]:

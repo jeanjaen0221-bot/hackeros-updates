@@ -204,6 +204,8 @@ header .spacer{flex:1}
         onclick="applyPreset('std')">◈ Standard</button>
       <button class="preset-btn" style="color:var(--green);border-color:#39ff1444"
         onclick="applyPreset('xl')">▶▶ XL</button>
+      <button class="preset-btn" style="color:var(--purple);border-color:#bd93f944"
+        onclick="applyPreset('max')" title="Densité et variété maximales">★ MAX</button>
     </div>
 
     <!-- Monde -->
@@ -345,6 +347,9 @@ header .spacer{flex:1}
     </div>
     <div class="sep"></div>
     <div id="world-current" style="font-size:11px;color:var(--dim);">Chargement…</div>
+
+    <div id="world-vitality" style="display:none;font-size:11px;color:var(--dim);
+         border-top:1px solid var(--border);margin-top:8px;padding-top:8px;"></div>
 
     <div id="world-explorer" style="display:none;">
       <div class="sep"></div>
@@ -540,6 +545,23 @@ async function loadWorldSummary() {
     <div style="margin-bottom:8px;">${types}</div>
     <div>${filesLine}</div>`;
 
+  // Vitalité : un monde peut être volumineux et pourtant vide. Ces compteurs
+  // disent s'il est habité, pas seulement s'il est grand.
+  const vit = d.vitality;
+  if (vit) {
+    const box = document.getElementById('world-vitality');
+    const habites = vit.places_enriched === vit.places_total
+      ? `<span style="color:var(--green)">${vit.places_total} lieux habités</span>`
+      : `<span style="color:var(--yellow)">${vit.places_enriched}/${vit.places_total} lieux enrichis</span>`;
+    const sansCible = vit.places_total - vit.places_with_target;
+    box.innerHTML = `
+      <b style="color:var(--text)">VITALITÉ</b> &nbsp; ${habites}
+      &nbsp;·&nbsp; ${vit.npcs} PNJ dont <b style="color:var(--orange)">${vit.npc_leaks}</b> exploitables
+      &nbsp;·&nbsp; ${vit.public_wifi} wifi publics
+      &nbsp;·&nbsp; ${sansCible} lieu(x) sans cible piratable`;
+    box.style.display = '';
+  }
+
   const sel = document.getElementById('tgt-kind');
   if (sel.options.length <= 1) {
     Object.keys(d.targets_by_type || {}).forEach(k => {
@@ -622,6 +644,23 @@ const PRESETS = {
     document.getElementById('f-size').value = 'XL';
     document.getElementById('f-missions').value = '550';
     document.getElementById('chk-skipfs').checked = false;
+    randomSeed();
+  },
+  // Réalisme maximal : toutes les options poussées dans le sens de la densité
+  // et de la variété. Les quartiers étant composés selon leur type, une densité
+  // de districts élevée multiplie surtout la VARIÉTÉ des lieux, pas seulement
+  // leur nombre.
+  max: () => {
+    document.getElementById('f-size').value = 'XL';
+    document.getElementById('f-missions').value = '550';
+    document.getElementById('f-diff').value = 'hard';
+    document.getElementById('f-wifi').value = 'high';
+    document.getElementById('f-districts').value = 'high';
+    document.getElementById('f-economy').value = '1.0';
+    document.getElementById('f-tax').value = '0.10';
+    document.getElementById('chk-skipfs').checked = false;
+    document.getElementById('chk-story').checked = true;
+    checkAll(true);
     randomSeed();
   },
 };

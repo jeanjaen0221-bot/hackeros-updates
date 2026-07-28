@@ -171,6 +171,19 @@ class Pipeline:
             except Exception as e:
                 prog(65, f"[WARN] filesystem partiel : {e}")
 
+        # 5b. enrichissement des lieux
+        # Placé ici, après que toutes les sources de lieux ont contribué
+        # (génération procédurale et ancres narratives) : enrichir plus tôt en
+        # laissait un tiers sans attributs.
+        self._check(cancel)
+        prog(70, "Enrichissement des lieux (horaires, sécurité, PNJ)…")
+        try:
+            from core.worldgen._impl import enrich_world_places
+            enriched = enrich_world_places(world, o.seed)
+            prog(72, f"{enriched} lieu(x) enrichi(s)")
+        except Exception as e:
+            prog(72, f"[WARN] enrichissement des lieux ignoré : {e}")
+
         # 6. network index
         self._check(cancel)
         prog(75, "Index réseau…")

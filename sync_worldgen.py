@@ -27,6 +27,7 @@ SYNC_MAP = {
     "core/worldgen/pipeline.py":        "core/worldgen/pipeline.py",
     "core/worldgen/export.py":          "core/worldgen/export.py",
     "core/worldgen/samples.py":         "core/worldgen/samples.py",
+    "core/worldgen/places.py":          "core/worldgen/places.py",
     "core/worldgen/market_seed.py":     "core/worldgen/market_seed.py",
     "core/worldgen/audit.py":           "core/worldgen/audit.py",
     "dev_tools/gen_story_fr.py":        "dev_tools/gen_story_fr.py",

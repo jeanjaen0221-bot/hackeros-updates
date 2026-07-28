@@ -362,6 +362,16 @@ def _world_overview(world: Dict[str, Any]) -> Dict[str, Any]:
             index = os_model.get("files_index")
             files_total += len(index) if isinstance(index, (list, dict)) else 0
 
+    # Vitalité du monde : combien de lieux sont réellement habités, et combien
+    # ne sont encore que des points nommés sur la carte.
+    enriched = sum(1 for p in places if isinstance(p, dict) and "security" in p)
+    npc_total = sum(len(p.get("npcs") or []) for p in places if isinstance(p, dict))
+    npc_leaks = sum(1 for p in places if isinstance(p, dict)
+                    for n in (p.get("npcs") or []) if isinstance(n, dict) and n.get("leak"))
+    wifi_public = sum(1 for p in places if isinstance(p, dict)
+                      and (p.get("wifi") or {}).get("public"))
+    with_target = sum(1 for p in places if isinstance(p, dict) and p.get("target_id"))
+
     district_rows = []
     for district in districts:
         if not isinstance(district, dict):
@@ -393,6 +403,14 @@ def _world_overview(world: Dict[str, Any]) -> Dict[str, Any]:
         },
         "targets_by_type": dict(sorted(by_type.items(), key=lambda kv: -kv[1])),
         "districts": district_rows,
+        "vitality": {
+            "places_enriched": enriched,
+            "places_total": len(places),
+            "places_with_target": with_target,
+            "npcs": npc_total,
+            "npc_leaks": npc_leaks,
+            "public_wifi": wifi_public,
+        },
     }
 
 
@@ -451,6 +469,78 @@ async def world_summary(
         files[name] = {"present": fp.exists(), "size": fp.stat().st_size if fp.exists() else 0}
     payload["files"] = files
     return JSONResponse(payload)
+
+
+@app.get("/api/world/places")
+async def world_places(
+    q: str = Query(default=""),
+    category: str = Query(default=""),
+    district: str = Query(default=""),
+    limit: int = Query(default=60),
+    offset: int = Query(default=0),
+    token: Optional[str] = Query(default=None),
+    dev_hub_token: Optional[str] = Cookie(default=None),
+) -> JSONResponse:
+    """Parcourt les lieux enrichis : horaires, sécurité, affluence, wifi, PNJ.
+
+    Un lieu ne portait que six champs (identifiant, district, catégorie, nom,
+    x, y) : impossible de vérifier depuis le Dev Hub si le monde généré était
+    habité ou seulement peuplé de points nommés.
+    """
+    _check_token(token, dev_hub_token)
+    if not _CODEC_OK:
+        return JSONResponse({"ok": False, "error": "Codec du monde indisponible."}, status_code=503)
+
+    world_path = SAVE_DIR / "world.dat"
+    if not world_path.exists():
+        return JSONResponse({"ok": False, "error": "Aucun monde généré."}, status_code=404)
+    try:
+        world = _decode_cached(world_path, WORLD_MAGIC)
+    except Exception as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
+
+    needle = q.strip().lower()
+    rows = []
+    for place in (world.get("places") or []):
+        if not isinstance(place, dict):
+            continue
+        if category and str(place.get("category", "")) != category:
+            continue
+        if district and str(place.get("district_id", "")) != district:
+            continue
+        name = str(place.get("name", ""))
+        if needle and needle not in name.lower():
+            continue
+        npcs = place.get("npcs") or []
+        wifi = place.get("wifi") or {}
+        rows.append({
+            "place_id": str(place.get("place_id", "")),
+            "name": name,
+            "category": str(place.get("category", "")),
+            "district_id": str(place.get("district_id", "")),
+            "target_id": str(place.get("target_id", "")),
+            "security": place.get("security"),
+            "footfall": place.get("footfall"),
+            "footfall_label": place.get("footfall_label"),
+            "hours": place.get("hours"),
+            "tags": place.get("tags") or [],
+            "ambiance": place.get("ambiance", ""),
+            "wifi": wifi,
+            "npc_count": len(npcs),
+            "npc_leaks": sum(1 for n in npcs if isinstance(n, dict) and n.get("leak")),
+            "npcs": [
+                {"name": str(n.get("name", "")), "role": str(n.get("role", "")),
+                 "staff": bool(n.get("staff")), "leak": n.get("leak")}
+                for n in npcs if isinstance(n, dict)
+            ],
+        })
+
+    total = len(rows)
+    start = max(0, int(offset))
+    end = start + max(1, min(500, int(limit)))
+    enriched = sum(1 for r in rows if r["security"] is not None)
+    return JSONResponse({"ok": True, "total": total, "enriched": enriched,
+                         "offset": start, "places": rows[start:end]})
 
 
 @app.get("/api/world/targets")
