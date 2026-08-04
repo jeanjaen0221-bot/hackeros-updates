@@ -21,6 +21,25 @@ MISSIONS_MAGIC = b"MISN"
 CODEC_VERSION = 1
 _SECRET = b"hacker_os_world_secret_v1"
 
+# Versions de format que ce jeu sait lire. Le champ « version » de l'en-tête
+# était jusqu'ici décodé puis ignoré : un fichier produit par une version
+# ultérieure du générateur aurait été décodé de travers, ou aurait paru vide,
+# sans que rien ne l'explique. On préfère un refus net et actionnable.
+SUPPORTED_VERSIONS = frozenset({1})
+
+
+class UnsupportedVersionError(ValueError):
+    """Le fichier vient d'une version du format que ce jeu ne sait pas lire."""
+
+    def __init__(self, version: int, magic: bytes) -> None:
+        self.version = int(version)
+        kind = {WORLD_MAGIC: "monde", MISSIONS_MAGIC: "missions"}.get(magic, "données")
+        super().__init__(
+            f"Fichier {kind} en version de format {version}, "
+            f"or ce jeu lit {sorted(SUPPORTED_VERSIONS)}. "
+            f"Mets le jeu à jour, ou republie un monde compatible depuis le Dev Hub."
+        )
+
 
 @dataclass(frozen=True)
 class CodecHeader:
@@ -61,6 +80,8 @@ def decode_dat(blob: bytes, magic: bytes, secret: bytes) -> Tuple[CodecHeader, D
         raise ValueError("bad magic")
 
     version, seed, payload_len = struct.unpack("<IQI", blob[4 : 4 + 4 + 8 + 4])
+    if int(version) not in SUPPORTED_VERSIONS:
+        raise UnsupportedVersionError(int(version), magic)
     sha = blob[4 + 4 + 8 + 4 : 4 + 4 + 8 + 4 + 32]
     enc = blob[4 + 4 + 8 + 4 + 32 :]
     if len(enc) != payload_len:

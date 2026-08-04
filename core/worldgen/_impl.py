@@ -869,6 +869,49 @@ def _inject_story_anchors(world: Dict[str, Any], seed: int) -> None:
                 pass
 
     world["targets"] = targets
+    # Les ancres narratives ajoutent leurs propres hôtes après la construction
+    # du monde : l'invariant « aucun hôte sans compte » doit être réappliqué.
+    assign_host_accounts(world, r)
+
+
+def assign_host_accounts(world: Dict[str, Any], r) -> int:
+    """Donne des comptes à tout hôte qui n'en a pas. Retourne le nombre traité.
+
+    Les hôtes naissent de plusieurs endroits du générateur — ancres narratives,
+    cibles ordinaires, routeurs domestiques. Attribuer les comptes à chacun de
+    ces endroits reviendrait à en oublier un, aujourd'hui ou au prochain ajout :
+    cette passe finale garantit l'invariant « aucun hôte sans compte », quelle
+    que soit son origine.
+
+    Sans comptes, ``attempt_login`` retombe sur « le mot de passe est
+    l'identifiant » et les wordlists du marché ne servent à rien.
+    """
+    from core.wordlists import password_at, rank_range_for
+
+    targets = world.get("targets") or []
+    if isinstance(targets, dict):
+        targets = list(targets.values())
+
+    filled = 0
+    for target in targets:
+        if not isinstance(target, dict):
+            continue
+        lo, hi = rank_range_for(str(target.get("type", "")))
+        for host in (target.get("hosts") or []):
+            if not isinstance(host, dict) or host.get("accounts"):
+                continue
+            users = ((host.get("os_model") or {}).get("users")
+                     or ["root", "dev"])
+            accounts: Dict[str, Any] = {}
+            for user in users:
+                # root est toujours mieux protégé : y accéder doit rester le
+                # chemin difficile, même sur une cible modeste.
+                low = lo + (hi - lo) // 2 if str(user) == "root" else lo
+                rank = r.randint(int(low), int(hi))
+                accounts[str(user)] = {"password": password_at(rank), "rank": rank}
+            host["accounts"] = accounts
+            filled += 1
+    return filled
 
 
 def make_empty_world(seed: int = 123) -> Dict[str, Any]:
@@ -2196,6 +2239,11 @@ def generate_world_auto(
             return f"{tid}:{suffix}"
 
         def add_host(nid: str, hostname: str, os_name: str, ip: str, services: List[dict], files: Dict[str, str]) -> None:
+            # Les comptes sont attribués par assign_host_accounts(), passe
+            # finale qui couvre toutes les branches de création. Les poser ici
+            # serait redondant, et surtout consommerait des tirages au milieu
+            # de la génération : le flux aléatoire décalerait tout ce qui suit,
+            # changeant le monde produit pour une seed donnée.
             hosts.append(
                 {
                     "host_id": new_host_id(nid),
@@ -2330,10 +2378,23 @@ def generate_world_auto(
         elif ttype == "person":
             home_id = nid("home_wifi")
             networks = []
+            first_name = name.split()[0] if " " in name else name
+            ssid_name = _pick(r, [f"{first_name}s_WiFi", f"HOME-{i:03d}", f"Network_{r.randint(100,999)}", f"{first_name.lower()}_home"])
+            # Le réseau domestique est toujours déclaré, car les hôtes ci-dessous
+            # y sont rattachés inconditionnellement. Le tirage ne décidait avant
+            # que de la déclaration du réseau, pas de la création du portable :
+            # quand il échouait, la cible gardait ses hôtes sans qu'aucun réseau
+            # n'y mène. Mesuré sur un monde XL : 7 cibles et 14 hôtes
+            # définitivement injoignables.
+            # La densité wifi pilote désormais la sécurité du réseau plutôt que
+            # son existence — une box mal configurée reste une box.
             if r.random() < float(wifi_private_p):
-                first_name = name.split()[0] if " " in name else name
-                ssid_name = _pick(r, [f"{first_name}s_WiFi", f"HOME-{i:03d}", f"Network_{r.randint(100,999)}", f"{first_name.lower()}_home"])
-                networks.append({"network_id": home_id, "type": "wifi_private", "ssid": ssid_name, "security": "wpa2", "district_id": did, "place_id": place_id})
+                security = "wpa2"
+            else:
+                security = _pick(r, ["wep", "open"])
+            networks.append({"network_id": home_id, "type": "wifi_private",
+                             "ssid": ssid_name, "security": security,
+                             "district_id": did, "place_id": place_id})
             # Laptop (always)
             lp_os = _pick(r, ["Windows", "Ubuntu", "macOS"])
             lp_user = _pick(r, ["alice","bob","user","dev",name.split()[0].lower()])
@@ -2567,6 +2628,10 @@ def generate_world_auto(
 
     world["relations"] = _build_world_relations(r, targets)
     world["targets"] = targets
+
+    # Invariant : aucun hôte sans compte, quelle que soit la branche qui l'a
+    # créé (ancres narratives, cibles ordinaires, routeurs domestiques).
+    assign_host_accounts(world, r)
 
     world["places"] = places
     return world

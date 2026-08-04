@@ -173,7 +173,12 @@ def _audit_world(report: AuditReport, world: Dict[str, Any]) -> Dict[str, Any]:
                                       "host missing network_id", {"host_id": hid}))
             else:
                 hosts_by_nid.setdefault(nid, []).append(h)
-                if declared_nids and nid not in declared_nids:
+                # La garde portait auparavant sur `declared_nids and ...` : une
+                # cible ne déclarant AUCUN réseau — le cas le plus grave, ses
+                # hôtes étant alors définitivement injoignables — échappait donc
+                # au contrôle. Mesuré sur un monde XL : 7 cibles et 14 hôtes
+                # concernés, sans le moindre signalement.
+                if nid not in declared_nids:
                     report.add(AuditIssue(
                         CAT_WORLD, SEVERITY_ERROR, "host_network_not_declared",
                         "host.network_id not in target.networks[]",

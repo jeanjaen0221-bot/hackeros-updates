@@ -22,6 +22,7 @@ DST_BASE = _HERE
 
 SYNC_MAP = {
     "core/world_codec.py":              "core/world_codec.py",
+    "core/wordlists.py":                "core/wordlists.py",
     "core/worldgen/__init__.py":        "core/worldgen/__init__.py",
     "core/worldgen/_impl.py":           "core/worldgen/_impl.py",
     "core/worldgen/pipeline.py":        "core/worldgen/pipeline.py",
