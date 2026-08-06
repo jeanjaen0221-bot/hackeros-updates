@@ -769,6 +769,10 @@ def _call_groq(system_prompt: str, user_prompt: str) -> "tuple[Optional[str], Op
         headers={
             "Authorization": f"Bearer {GROQ_API_KEY}",
             "Content-Type": "application/json",
+            # Le Cloudflare devant api.groq.com renvoie une 403 (error 1010)
+            # sur le User-Agent par defaut d'urllib.request ("Python-urllib/x.y"),
+            # reconnu comme signature de bot. Documente sur le forum Groq.
+            "User-Agent": "Mozilla/5.0 (compatible; HackerOSDevHub/1.0)",
         },
     )
     try:
