@@ -761,7 +761,12 @@ def _call_groq(system_prompt: str, user_prompt: str) -> "tuple[Optional[str], Op
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
-        "max_tokens": 120,
+        # gpt-oss-20b est un modele "reasoning" : il consomme des tokens en
+        # raisonnement interne avant d'ecrire la reponse visible. A 120 tokens,
+        # ce budget partait entierement dans le raisonnement -> content vide.
+        # reasoning_effort=low + une marge de tokens laisse la place aux deux.
+        "reasoning_effort": "low",
+        "max_tokens": 400,
         "temperature": 0.9,
     }).encode("utf-8")
     req = urllib.request.Request(
@@ -778,7 +783,14 @@ def _call_groq(system_prompt: str, user_prompt: str) -> "tuple[Optional[str], Op
     try:
         with urllib.request.urlopen(req, timeout=8) as resp:
             payload = json.loads(resp.read().decode("utf-8"))
-        return payload["choices"][0]["message"]["content"], None
+        choice = (payload.get("choices") or [{}])[0]
+        content = (choice.get("message") or {}).get("content")
+        if not content:
+            # Le budget de tokens est parti dans le raisonnement interne du
+            # modele avant d'ecrire une reponse visible.
+            finish = choice.get("finish_reason", "?")
+            return None, f"empty_content finish_reason={finish}"
+        return content, None
     except urllib.error.HTTPError as exc:
         try:
             body_txt = exc.read().decode("utf-8", errors="replace")[:500]
