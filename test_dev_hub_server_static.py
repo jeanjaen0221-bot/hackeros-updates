@@ -105,10 +105,11 @@ def test_forum_ai_helpers():
     assert spec.loader is not None
     spec.loader.exec_module(mod)
 
-    # Sans cle configuree : jamais d'appel reseau, toujours None.
+    # Sans cle configuree : jamais d'appel reseau, toujours (None, detail).
     mod.GROQ_API_KEY = ""
-    assert mod._call_groq("system", "user") is None, \
-        "_call_groq doit renvoyer None sans cle, jamais lever ni appeler le reseau"
+    text, detail = mod._call_groq("system", "user")
+    assert text is None and detail == "missing_api_key", \
+        "_call_groq doit renvoyer (None, 'missing_api_key') sans cle, jamais lever ni appeler le reseau"
 
     # Sanitisation : une ligne, tronquee a 280, refus de role detecte.
     assert mod._sanitize_reply(None) is None

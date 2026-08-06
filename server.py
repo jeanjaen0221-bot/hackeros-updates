@@ -20,6 +20,7 @@ import json
 import os
 import sys
 import time
+import urllib.error
 import urllib.request
 import uuid
 import zipfile
@@ -690,10 +691,14 @@ async def missions_list(
 # clé côté client.
 
 GROQ_API_KEY: str = os.environ.get("GROQ_API_KEY", "")
-GROQ_MODEL: str = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
+GROQ_MODEL: str = os.environ.get("GROQ_MODEL", "openai/gpt-oss-20b")
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 FORUM_AI_RATE_PER_MIN: int = int(os.environ.get("FORUM_AI_RATE_PER_MIN", "20"))
 FORUM_AI_DAILY_LIMIT: int = int(os.environ.get("FORUM_AI_DAILY_LIMIT", "500"))
+# Renvoie le détail de l'erreur Groq dans la réponse JSON au lieu de le
+# laisser uniquement dans les logs serveur — utile le temps de la mise en
+# place (clé/modèle), jamais nécessaire une fois le endpoint stabilisé.
+FORUM_AI_DEBUG: bool = os.environ.get("FORUM_AI_DEBUG", "0") == "1"
 
 _forum_ai_executor = ThreadPoolExecutor(max_workers=4)
 _forum_ai_rate: Dict[str, List[float]] = {}
@@ -742,10 +747,14 @@ def _sanitize_reply(text: Optional[str]) -> Optional[str]:
     return flat[:280]
 
 
-def _call_groq(system_prompt: str, user_prompt: str) -> Optional[str]:
-    """Appel bloquant à Groq — exécuté uniquement dans _forum_ai_executor."""
+def _call_groq(system_prompt: str, user_prompt: str) -> "tuple[Optional[str], Optional[str]]":
+    """Appel bloquant à Groq — exécuté uniquement dans _forum_ai_executor.
+
+    Retourne ``(texte, detail_erreur)`` : ``detail_erreur`` n'est jamais
+    renvoyé au client sauf si ``FORUM_AI_DEBUG=1`` (voir ``forum_npc_reply``).
+    """
     if not GROQ_API_KEY:
-        return None
+        return None, "missing_api_key"
     body = json.dumps({
         "model": GROQ_MODEL,
         "messages": [
@@ -765,10 +774,19 @@ def _call_groq(system_prompt: str, user_prompt: str) -> Optional[str]:
     try:
         with urllib.request.urlopen(req, timeout=8) as resp:
             payload = json.loads(resp.read().decode("utf-8"))
-        return payload["choices"][0]["message"]["content"]
+        return payload["choices"][0]["message"]["content"], None
+    except urllib.error.HTTPError as exc:
+        try:
+            body_txt = exc.read().decode("utf-8", errors="replace")[:500]
+        except Exception:
+            body_txt = ""
+        detail = f"groq_http_{exc.code}: {body_txt}"
+        print(f"[ForumAI] {detail}")
+        return None, detail
     except Exception as exc:
-        print(f"[ForumAI] Groq call failed: {exc}")
-        return None
+        detail = f"{type(exc).__name__}: {exc}"
+        print(f"[ForumAI] Groq call failed: {detail}")
+        return None, detail
 
 
 def _build_forum_ai_prompt(data: Dict[str, Any]) -> "tuple[str, str]":
@@ -833,15 +851,19 @@ async def forum_npc_reply(request: Request) -> JSONResponse:
 
     loop = asyncio.get_event_loop()
     try:
-        raw = await asyncio.wait_for(
+        raw, detail = await asyncio.wait_for(
             loop.run_in_executor(_forum_ai_executor, _call_groq, system_prompt, user_prompt),
             timeout=9.0,
         )
     except Exception as exc:
-        return JSONResponse({"ok": False, "error": f"upstream_error: {exc}"}, status_code=502)
+        detail = f"{type(exc).__name__}: {exc}"
+        raw = None
 
     if not raw:
-        return JSONResponse({"ok": False, "error": "upstream_failed"}, status_code=502)
+        err: Dict[str, Any] = {"ok": False, "error": "upstream_failed"}
+        if FORUM_AI_DEBUG:
+            err["detail"] = detail
+        return JSONResponse(err, status_code=502)
     text = _sanitize_reply(raw)
     if not text:
         return JSONResponse({"ok": False, "error": "refused_or_empty"}, status_code=502)
